@@ -5,9 +5,6 @@
 ** temp.hpp
 */
 
-#ifndef INCLUDE_TEMP_HPP_
-    #define INCLUDE_TEMP_HPP_
+#pragma once
 
 int temp(void);
-
-#endif  // INCLUDE_TEMP_HPP_
