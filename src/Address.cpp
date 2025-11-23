@@ -2,6 +2,7 @@
 
 #include <arpa/inet.h>
 #include <iostream>
+#include <string>
 
 Address::Address() : _ip(0), _port(0) {}
 
@@ -52,7 +53,8 @@ std::string Address::getIP() const {
     struct in_addr addr;
     addr.s_addr = _ip;
 
-    if (inet_ntop(AF_INET, &addr, buf, static_cast<socklen_t>(sizeof(buf))) == nullptr) {
+    if (inet_ntop(AF_INET, &addr, buf, static_cast<socklen_t>(sizeof(buf)))
+        == nullptr) {
         return std::string();
     }
 

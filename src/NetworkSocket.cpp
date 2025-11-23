@@ -6,6 +6,7 @@
 
 #include <cerrno>
 #include <cstring>
+#include <cstdio>
 #include <iostream>
 #include <climits>
 
@@ -61,7 +62,8 @@ void NetworkSocket::close() {
     _is_valid = false;
 }
 
-int NetworkSocket::sendTo(const void* data, size_t size, const Address& destination) {
+int NetworkSocket::sendTo(const void* data, size_t size,
+        const Address& destination) {
     if (!_is_valid) {
         std::cerr << "Cannot send: socket not created." << std::endl;
         return -1;
@@ -78,7 +80,8 @@ int NetworkSocket::sendTo(const void* data, size_t size, const Address& destinat
     return static_cast<int>(sent);
 }
 
-int NetworkSocket::receiveFrom(void* buffer, size_t buffer_size, Address& sender) {
+int NetworkSocket::receiveFrom(void* buffer, size_t buffer_size,
+        Address& sender) {
     if (!_is_valid) {
         std::cerr << "Cannot receive: socket not created." << std::endl;
         return -1;
@@ -113,7 +116,8 @@ int NetworkSocket::receiveFrom(void* buffer, size_t buffer_size, Address& sender
         return -1;
     }
     if (recvd > INT_MAX) {
-        std::cerr << "receiveFrom: received " << recvd << " bytes (capping to INT_MAX)" << std::endl;
+        std::cerr << "receiveFrom: received " << recvd
+            << " bytes (capping to INT_MAX)" << std::endl;
         recvd = INT_MAX;
     }
 
@@ -123,7 +127,8 @@ int NetworkSocket::receiveFrom(void* buffer, size_t buffer_size, Address& sender
 
 bool NetworkSocket::setNonBlocking(bool enabled) {
     if (!_is_valid) {
-        std::cerr << "Cannot set non-blocking: socket not created." << std::endl;
+        std::cerr << "Cannot set non-blocking: socket not created."
+            << std::endl;
         return false;
     }
     int flags = fcntl(_socket, F_GETFL, 0);
