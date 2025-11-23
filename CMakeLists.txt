@@ -27,6 +27,8 @@ endif ()
 ########## NETWORK ##########
 add_library( ${PROJECT_NAME} STATIC
     ${NET_SRC_DIR}/temp.cpp
+    ${NET_SRC_DIR}/NetworkSocket.cpp
+    ${NET_SRC_DIR}/Address.cpp
 )
 
 target_include_directories(${PROJECT_NAME}
