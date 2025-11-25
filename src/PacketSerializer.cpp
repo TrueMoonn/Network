@@ -12,7 +12,8 @@ std::vector<uint8_t> PacketSerializer::serialize(const T& packet) {
 }
 
 template<typename T>
-bool PacketSerializer::deserialize(const std::vector<uint8_t>& buffer, T& packet) {
+bool PacketSerializer::deserialize(const std::vector<uint8_t>& buffer,
+    T& packet) {
     if (buffer.size() < sizeof(T)) {
         return false;
     }
