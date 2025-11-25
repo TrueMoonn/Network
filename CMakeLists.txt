@@ -30,6 +30,8 @@ add_library( ${PROJECT_NAME} STATIC
     ${NET_SRC_DIR}/NetworkSocket.cpp
     ${NET_SRC_DIR}/Address.cpp
     ${NET_SRC_DIR}/NetworkUtils.cpp   
+    ${NET_SRC_DIR}/PacketSerializer.cpp
+    ${NET_SRC_DIR}/PacketFactory.cpp
 )
 
 target_include_directories(${PROJECT_NAME}
