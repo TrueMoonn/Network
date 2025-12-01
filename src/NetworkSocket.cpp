@@ -10,7 +10,7 @@
 #include <iostream>
 #include <climits>
 
-NetworkSocket::NetworkSocket() : _socket(-1), _is_valid(false) {}
+NetworkSocket::NetworkSocket() : _socket(-1), _is_valid(false), _type(SocketType::UDP) {}
 
 NetworkSocket::~NetworkSocket() {
     if (_is_valid) {
@@ -20,8 +20,11 @@ NetworkSocket::~NetworkSocket() {
     }
 }
 
-bool NetworkSocket::create() {
-    _socket = ::socket(AF_INET, SOCK_DGRAM, 0);
+bool NetworkSocket::create(SocketType type) {
+    _type = type;
+    int sock_type = (_type == SocketType::TCP) ? SOCK_STREAM : SOCK_DGRAM;
+
+    _socket = ::socket(AF_INET, sock_type, 0);
     if (_socket < 0) {
         perror("socket");
         _is_valid = false;
@@ -33,7 +36,7 @@ bool NetworkSocket::create() {
 
 bool NetworkSocket::bind(uint16_t port) {
     if (!_is_valid) {
-        std::cerr << "Cannot bind: socket not created." << std::endl;
+        std::cerr << "Cannot bind: socket not created" << std::endl;
         return false;
     }
 
@@ -53,7 +56,7 @@ bool NetworkSocket::bind(uint16_t port) {
 
 void NetworkSocket::close() {
     if (!_is_valid) {
-        std::cerr << "Cannot close: socket not created." << std::endl;
+        std::cerr << "Cannot close: socket not created" << std::endl;
         return;
     }
 
@@ -62,72 +65,9 @@ void NetworkSocket::close() {
     _is_valid = false;
 }
 
-int NetworkSocket::sendTo(const void* data, size_t size,
-        const Address& destination) {
-    if (!_is_valid) {
-        std::cerr << "Cannot send: socket not created." << std::endl;
-        return -1;
-    }
-
-    sockaddr_in addr = destination.toSockAddr();
-    ssize_t sent = ::sendto(_socket, data, size, 0,
-                            reinterpret_cast<struct sockaddr*>(&addr),
-                            static_cast<socklen_t>(sizeof(addr)));
-    if (sent < 0) {
-        perror("sendto");
-        return -1;
-    }
-    return static_cast<int>(sent);
-}
-
-int NetworkSocket::receiveFrom(void* buffer, size_t buffer_size,
-        Address& sender) {
-    if (!_is_valid) {
-        std::cerr << "Cannot receive: socket not created." << std::endl;
-        return -1;
-    }
-
-    if (buffer == nullptr) {
-        std::cerr << "receiveFrom: buffer is null" << std::endl;
-        return -1;
-    }
-
-    if (buffer_size == 0) {
-        std::cerr << "receiveFrom: buffer_size is 0" << std::endl;
-        return -1;
-    }
-
-    sockaddr_in addr{};
-    socklen_t addrlen = sizeof(addr);
-
-    // handle EINTR (interrupt by signal)
-    ssize_t recvd;
-    do {
-        recvd = ::recvfrom(_socket, buffer, buffer_size, 0,
-                           reinterpret_cast<struct sockaddr*>(&addr), &addrlen);
-    } while (recvd < 0 && errno == EINTR);
-
-    if (recvd < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            // non blocking socket or timeout expired
-            return 0;
-        }
-        perror("recvfrom");
-        return -1;
-    }
-    if (recvd > INT_MAX) {
-        std::cerr << "receiveFrom: received " << recvd
-            << " bytes (capping to INT_MAX)" << std::endl;
-        recvd = INT_MAX;
-    }
-
-    sender = Address::fromSockAddr(addr);
-    return static_cast<int>(recvd);
-}
-
 bool NetworkSocket::setNonBlocking(bool enabled) {
     if (!_is_valid) {
-        std::cerr << "Cannot set non-blocking: socket not created."
+        std::cerr << "Cannot set non-blocking: socket not created"
             << std::endl;
         return false;
     }
@@ -150,7 +90,7 @@ bool NetworkSocket::setNonBlocking(bool enabled) {
 
 bool NetworkSocket::setTimeout(int milliseconds) {
     if (!_is_valid) {
-        std::cerr << "Cannot set timeout: socket not created." << std::endl;
+        std::cerr << "Cannot set timeout: socket not created" << std::endl;
         return false;
     }
     struct timeval tv{};
@@ -168,10 +108,226 @@ bool NetworkSocket::setTimeout(int milliseconds) {
     return true;
 }
 
+bool NetworkSocket::setReuseAddr(bool enabled) {
+    if (!_is_valid) {
+        std::cerr << "Cannot set reuse addr: socket not created" << std::endl;
+        return false;
+    }
+
+    int opt = enabled ? 1 : 0;
+    if (setsockopt(_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        perror("setsockopt(SO_REUSEADDR)");
+        return false;
+    }
+
+    return true;
+}
+
 bool NetworkSocket::isValid() const {
     return _is_valid;
 }
 
 int NetworkSocket::getSocket() const {
     return _socket;
+}
+
+// UDP
+int NetworkSocket::sendTo(const void* data, size_t size, const Address& destination) {
+    if (!_is_valid) {
+        std::cerr << "Cannot send: socket not created" << std::endl;
+        return -1;
+    }
+
+    if (_type != SocketType::UDP) {
+        std::cerr << "Cannot use sendTo: socket is not UDP. Use send() instead" << std::endl;
+        return -1;
+    }
+
+    sockaddr_in addr = destination.toSockAddr();
+    ssize_t sent = ::sendto(_socket, data, size, 0,
+                            reinterpret_cast<struct sockaddr*>(&addr),
+                            static_cast<socklen_t>(sizeof(addr)));
+    if (sent < 0) {
+        perror("sendto");
+        return -1;
+    }
+    return static_cast<int>(sent);
+}
+
+int NetworkSocket::receiveFrom(void* buffer, size_t buffer_size, Address& sender) {
+    if (!_is_valid) {
+        std::cerr << "Cannot receive: socket not created" << std::endl;
+        return -1;
+    }
+
+    if (_type != SocketType::UDP) {
+        std::cerr << "Cannot use receiveFrom: socket is not UDP, Use recv() instead" << std::endl;
+        return -1;
+    }
+
+    if (buffer == nullptr) {
+        std::cerr << "receiveFrom: buffer is null" << std::endl;
+        return -1;
+    }
+
+    if (buffer_size == 0) {
+        std::cerr << "receiveFrom: buffer_size is 0" << std::endl;
+        return -1;
+    }
+
+    sockaddr_in addr{};
+    socklen_t addrlen = sizeof(addr);
+
+    ssize_t recvd;
+    do {
+        recvd = ::recvfrom(_socket, buffer, buffer_size, 0,
+                           reinterpret_cast<struct sockaddr*>(&addr), &addrlen);
+    } while (recvd < 0 && errno == EINTR);
+
+    if (recvd < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+            return 0;
+        perror("recvfrom");
+        return -1;
+    }
+    if (recvd > INT_MAX) {
+        std::cerr << "receiveFrom: received " << recvd
+            << " bytes (capping to INT_MAX)" << std::endl;
+        recvd = INT_MAX;
+    }
+
+    sender = Address::fromSockAddr(addr);
+    return static_cast<int>(recvd);
+}
+
+// TCP
+bool NetworkSocket::listen(int maxqueue) {
+    if (!_is_valid) {
+        std::cerr << "Cannot listen: socket not created" << std::endl;
+        return false;
+    }
+
+    if (_type != SocketType::TCP) {
+        std::cerr << "Cannot listen: socket is not TCP" << std::endl;
+        return false;
+    }
+
+    if (::listen(_socket, maxqueue) < 0) {
+        perror("listen failed");
+        return false;
+    }
+
+    return true;
+}
+
+int NetworkSocket::accept(Address& client_addr) {
+    if (!_is_valid) {
+        std::cerr << "Cannot accept: socket not created" << std::endl;
+        return -1;
+    }
+
+    if (_type != SocketType::TCP) {
+        std::cerr << "Cannot accept: socket is not TCP" << std::endl;
+        return -1;
+    }
+
+    sockaddr_in addr{};
+    socklen_t addr_len = sizeof(addr);
+
+    int client_fd = ::accept(_socket, (struct sockaddr*)&addr, &addr_len);
+
+    if (client_fd < 0) {
+        perror("accept failed");
+        return -1;
+    }
+
+    client_addr = Address::fromSockAddr(addr);
+    return client_fd;
+}
+
+bool NetworkSocket::connect(const Address& server_addr) {
+    if (!_is_valid) {
+        std::cerr << "Cannot connect: socket not created" << std::endl;
+        return false;
+    }
+
+    if (_type != SocketType::TCP) {
+        std::cerr << "Cannot connect: socket is not TCP" << std::endl;
+        return false;
+    }
+
+    sockaddr_in addr = server_addr.toSockAddr();
+
+    if (::connect(_socket, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        perror("connect failed");
+        return false;
+    }
+
+    return true;
+}
+
+int NetworkSocket::send(const void* data, size_t size) {
+    if (!_is_valid) {
+        std::cerr << "Cannot send: socket not created" << std::endl;
+        return -1;
+    }
+
+    if (_type != SocketType::TCP) {
+        std::cerr << "Cannot use send: socket is not TCP. Use sendTo() instead" << std::endl;
+        return -1;
+    }
+
+    if (data == nullptr || size == 0) {
+        std::cerr << "Invalid data or size" << std::endl;
+        return -1;
+    }
+
+    ssize_t sent = ::send(_socket, data, size, 0);
+
+    if (sent < 0) {
+        perror("send");
+        return -1;
+    }
+
+    return static_cast<int>(sent);
+}
+
+int NetworkSocket::recv(void* buffer, size_t buffer_size) {
+    if (!_is_valid) {
+        std::cerr << "Cannot receive: socket not created" << std::endl;
+        return -1;
+    }
+
+    if (_type != SocketType::TCP) {
+        std::cerr << "Cannot use recv: socket is not TCP. Use receiveFrom() instead" << std::endl;
+        return -1;
+    }
+
+    if (buffer == nullptr || buffer_size == 0) {
+        std::cerr << "Invalid buffer or size" << std::endl;
+        return -1;
+    }
+
+    // handle EINTR (interrupt by signal)
+    ssize_t recvd;
+    do {
+        recvd = ::recv(_socket, buffer, buffer_size, 0);
+    } while (recvd < 0 && errno == EINTR);
+
+    if (recvd < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            // non blocking socket or timeout expired
+            return 0;
+        }
+        perror("recv");
+        return -1;
+    }
+
+    if (recvd > INT_MAX) {
+        std::cerr << "recv: received " << recvd
+            << " bytes (capping to INT_MAX)" << std::endl;
+        recvd = INT_MAX;
+    }
+
+    return static_cast<int>(recvd);
 }
