@@ -148,15 +148,17 @@ int Server::receive(void* buffer, size_t max_size, Address& sender) {
             return -1;
         }
 
-        auto it = _tcp_clients.begin();
-        int client_fd = it->first;
-        sender = it->second;
+        for (auto& pair : _tcp_clients) {
+            if (pair.second == sender) {
+                received = ::recv(pair.first, buffer, max_size, 0);
 
-        received = ::recv(client_fd, buffer, max_size, 0);
+                if (received == 0) {
+                    ::close(pair.first);
+                    _tcp_clients.erase(pair.first);
+                }
 
-        if (received == 0) {
-            ::close(client_fd);
-            _tcp_clients.erase(it);
+                break;
+            }
         }
     }
 
