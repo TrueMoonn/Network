@@ -10,7 +10,8 @@
 #include <iostream>
 #include <climits>
 
-NetworkSocket::NetworkSocket() : _socket(-1), _is_valid(false), _type(SocketType::UDP) {}
+NetworkSocket::NetworkSocket()
+    : _socket(-1), _is_valid(false), _type(SocketType::UDP) {}
 
 NetworkSocket::~NetworkSocket() {
     if (_is_valid) {
@@ -36,7 +37,8 @@ bool NetworkSocket::create(SocketType type) {
 
 bool NetworkSocket::bind(uint16_t port) {
     if (!_is_valid) {
-        std::cerr << "Cannot bind: socket not created" << std::endl;
+        std::cerr << "Cannot bind: socket not created"
+                  << std::endl;
         return false;
     }
 
@@ -56,7 +58,8 @@ bool NetworkSocket::bind(uint16_t port) {
 
 void NetworkSocket::close() {
     if (!_is_valid) {
-        std::cerr << "Cannot close: socket not created" << std::endl;
+        std::cerr << "Cannot close: socket not created"
+                  << std::endl;
         return;
     }
 
@@ -90,7 +93,8 @@ bool NetworkSocket::setNonBlocking(bool enabled) {
 
 bool NetworkSocket::setTimeout(int milliseconds) {
     if (!_is_valid) {
-        std::cerr << "Cannot set timeout: socket not created" << std::endl;
+        std::cerr << "Cannot set timeout: socket not created"
+                  << std::endl;
         return false;
     }
     struct timeval tv{};
@@ -110,7 +114,8 @@ bool NetworkSocket::setTimeout(int milliseconds) {
 
 bool NetworkSocket::setReuseAddr(bool enabled) {
     if (!_is_valid) {
-        std::cerr << "Cannot set reuse addr: socket not created" << std::endl;
+        std::cerr << "Cannot set reuse addr: socket not created"
+                  << std::endl;
         return false;
     }
 
@@ -132,14 +137,17 @@ int NetworkSocket::getSocket() const {
 }
 
 // UDP
-int NetworkSocket::sendTo(const void* data, size_t size, const Address& destination) {
+int NetworkSocket::sendTo(
+    const void* data, size_t size, const Address& destination) {
     if (!_is_valid) {
-        std::cerr << "Cannot send: socket not created" << std::endl;
+        std::cerr << "Cannot send: socket not created"
+                  << std::endl;
         return -1;
     }
 
     if (_type != SocketType::UDP) {
-        std::cerr << "Cannot use sendTo: socket is not UDP. Use send() instead" << std::endl;
+        std::cerr << "Cannot use sendTo: Use send() for TCP mode"
+                  << std::endl;
         return -1;
     }
 
@@ -154,24 +162,29 @@ int NetworkSocket::sendTo(const void* data, size_t size, const Address& destinat
     return static_cast<int>(sent);
 }
 
-int NetworkSocket::receiveFrom(void* buffer, size_t buffer_size, Address& sender) {
+int NetworkSocket::receiveFrom(
+    void* buffer, size_t buffer_size, Address& sender) {
     if (!_is_valid) {
-        std::cerr << "Cannot receive: socket not created" << std::endl;
+        std::cerr << "Cannot receive: socket not created"
+                  << std::endl;
         return -1;
     }
 
     if (_type != SocketType::UDP) {
-        std::cerr << "Cannot use receiveFrom: socket is not UDP, Use recv() instead" << std::endl;
+        std::cerr << "Cannot use receiveFrom: Use recv() for TCP mode"
+                  << std::endl;
         return -1;
     }
 
     if (buffer == nullptr) {
-        std::cerr << "receiveFrom: buffer is null" << std::endl;
+        std::cerr << "receiveFrom: buffer is null"
+                  << std::endl;
         return -1;
     }
 
     if (buffer_size == 0) {
-        std::cerr << "receiveFrom: buffer_size is 0" << std::endl;
+        std::cerr << "receiveFrom: buffer_size is 0"
+                  << std::endl;
         return -1;
     }
 
@@ -191,8 +204,10 @@ int NetworkSocket::receiveFrom(void* buffer, size_t buffer_size, Address& sender
         return -1;
     }
     if (recvd > INT_MAX) {
-        std::cerr << "receiveFrom: received " << recvd
-            << " bytes (capping to INT_MAX)" << std::endl;
+        std::cerr << "receiveFrom: received "
+                  << recvd
+                  << " bytes (capping to INT_MAX)"
+                  << std::endl;
         recvd = INT_MAX;
     }
 
@@ -203,12 +218,14 @@ int NetworkSocket::receiveFrom(void* buffer, size_t buffer_size, Address& sender
 // TCP
 bool NetworkSocket::listen(int maxqueue) {
     if (!_is_valid) {
-        std::cerr << "Cannot listen: socket not created" << std::endl;
+        std::cerr << "Cannot listen: socket not created"
+                  << std::endl;
         return false;
     }
 
     if (_type != SocketType::TCP) {
-        std::cerr << "Cannot listen: socket is not TCP" << std::endl;
+        std::cerr << "Cannot listen: socket is not TCP"
+                  << std::endl;
         return false;
     }
 
@@ -222,12 +239,14 @@ bool NetworkSocket::listen(int maxqueue) {
 
 int NetworkSocket::accept(Address& client_addr) {
     if (!_is_valid) {
-        std::cerr << "Cannot accept: socket not created" << std::endl;
+        std::cerr << "Cannot accept: socket not created"
+                  << std::endl;
         return -1;
     }
 
     if (_type != SocketType::TCP) {
-        std::cerr << "Cannot accept: socket is not TCP" << std::endl;
+        std::cerr << "Cannot accept: socket is not TCP"
+                  << std::endl;
         return -1;
     }
 
@@ -247,12 +266,14 @@ int NetworkSocket::accept(Address& client_addr) {
 
 bool NetworkSocket::connect(const Address& server_addr) {
     if (!_is_valid) {
-        std::cerr << "Cannot connect: socket not created" << std::endl;
+        std::cerr << "Cannot connect: socket not created"
+                  << std::endl;
         return false;
     }
 
     if (_type != SocketType::TCP) {
-        std::cerr << "Cannot connect: socket is not TCP" << std::endl;
+        std::cerr << "Cannot connect: socket is not TCP"
+                  << std::endl;
         return false;
     }
 
@@ -268,17 +289,20 @@ bool NetworkSocket::connect(const Address& server_addr) {
 
 int NetworkSocket::send(const void* data, size_t size) {
     if (!_is_valid) {
-        std::cerr << "Cannot send: socket not created" << std::endl;
+        std::cerr << "Cannot send: socket not created"
+                  << std::endl;
         return -1;
     }
 
     if (_type != SocketType::TCP) {
-        std::cerr << "Cannot use send: socket is not TCP. Use sendTo() instead" << std::endl;
+        std::cerr << "Cannot use send: Use sendTo() for UDP"
+                  << std::endl;
         return -1;
     }
 
     if (data == nullptr || size == 0) {
-        std::cerr << "Invalid data or size" << std::endl;
+        std::cerr << "Invalid data or size"
+                  << std::endl;
         return -1;
     }
 
@@ -294,21 +318,23 @@ int NetworkSocket::send(const void* data, size_t size) {
 
 int NetworkSocket::recv(void* buffer, size_t buffer_size) {
     if (!_is_valid) {
-        std::cerr << "Cannot receive: socket not created" << std::endl;
+        std::cerr << "Cannot receive: socket not created"
+                  << std::endl;
         return -1;
     }
 
     if (_type != SocketType::TCP) {
-        std::cerr << "Cannot use recv: socket is not TCP. Use receiveFrom() instead" << std::endl;
+        std::cerr << "Cannot use recv: Use receiveFrom() for UDP"
+                  << std::endl;
         return -1;
     }
 
     if (buffer == nullptr || buffer_size == 0) {
-        std::cerr << "Invalid buffer or size" << std::endl;
+        std::cerr << "Invalid buffer or size"
+                  << std::endl;
         return -1;
     }
 
-    // handle EINTR (interrupt by signal)
     ssize_t recvd;
     do {
         recvd = ::recv(_socket, buffer, buffer_size, 0);
@@ -316,7 +342,6 @@ int NetworkSocket::recv(void* buffer, size_t buffer_size) {
 
     if (recvd < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            // non blocking socket or timeout expired
             return 0;
         }
         perror("recv");
@@ -324,8 +349,10 @@ int NetworkSocket::recv(void* buffer, size_t buffer_size) {
     }
 
     if (recvd > INT_MAX) {
-        std::cerr << "recv: received " << recvd
-            << " bytes (capping to INT_MAX)" << std::endl;
+        std::cerr << "recv: received "
+                  << recvd
+                  << " bytes (capping to INT_MAX)"
+                  << std::endl;
         recvd = INT_MAX;
     }
 

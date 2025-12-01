@@ -1,12 +1,14 @@
 #pragma once
+
+#include <string>
+
 #include "Network/Address.hpp"
 #include "Network/Packet.hpp"
 #include "Network/NetworkSocket.hpp"
-#include <string>
 
 class Client {
-public:
-    Client(const std::string& protocol = "UDP");
+ public:
+    explicit Client(const std::string& protocol = "UDP");
     ~Client();
 
     bool connect(const std::string& server_ip, uint16_t server_port);
@@ -22,7 +24,7 @@ public:
     const Address& getServerAddress() const { return _server_address; }
     SocketType getProtocol() const { return _socket.getType(); }
 
-private:
+ private:
     NetworkSocket _socket;
     Address _server_address;
     bool _connected;
