@@ -7,13 +7,16 @@
 #include <cstring>
 #include <chrono>
 #include <stdexcept>
+#include <vector>
+#include <string>
 
 ProtocolManager::ProtocolManager(const std::string &path) {
     std::ifstream file(path, std::ifstream::binary);
     Json::Value protocol;
 
     if (!file) {
-        std::cerr << "Error: Cannot open protocol config file: " << path << std::endl;
+        std::cerr << "Error: Cannot open protocol config file: "
+            << path << std::endl;
         throw std::runtime_error("Invalid protocol config path");
     }
 
@@ -25,7 +28,8 @@ ProtocolManager::ProtocolManager(const std::string &path) {
     std::string errs;
     std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
 
-    if (!reader->parse(content.c_str(), content.c_str() + content.size(), &protocol, &errs)) {
+    if (!reader->parse(content.c_str(), content.c_str() + content.size(),
+        &protocol, &errs)) {
         std::cerr << "Error: Invalid JSON format: " << errs << std::endl;
         throw std::runtime_error("Invalid JSON format in protocol config file");
     }
@@ -53,7 +57,8 @@ ProtocolManager::ProtocolManager(const std::string &path) {
 
     if (protocol.isMember("end_of_packet")) {
         _end_of_packet.active = protocol["end_of_packet"]["active"].asBool();
-        _end_of_packet.characters = protocol["end_of_packet"]["characters"].asString();
+        _end_of_packet.characters =
+            protocol["end_of_packet"]["characters"].asString();
     } else {
         _end_of_packet.active = false;
     }
@@ -74,21 +79,28 @@ ProtocolManager::ProtocolManager(const std::string &path) {
     }
 
     std::cout << "Protocol configuration loaded successfully" << std::endl;
-    std::cout << "  Endianness: " << (_endianness == Endianness::BIG ? "big" : "little")
-              << "-endian" << std::endl;
-    std::cout << "  Preambule: " << (_preambule.active ? "enabled" : "disabled") << std::endl;
-    std::cout << "  Packet length: " << (_packet_length.active ? "enabled" : "disabled") << std::endl;
-    std::cout << "  Datetime: " << (_datetime.active ? "enabled" : "disabled") << std::endl;
-    std::cout << "  End of packet: " << (_end_of_packet.active ? "enabled" : "disabled") << std::endl;
+    std::cout << "  Endianness: "
+        << (_endianness == Endianness::BIG ? "big" : "little")
+        << "-endian" << std::endl;
+    std::cout << "  Preambule: "
+        << (_preambule.active ? "enabled" : "disabled") << std::endl;
+    std::cout << "  Packet length: "
+        << (_packet_length.active ? "enabled" : "disabled") << std::endl;
+    std::cout << "  Datetime: " << (_datetime.active ? "enabled" : "disabled")
+        << std::endl;
+    std::cout << "  End of packet: "
+        << (_end_of_packet.active ? "enabled" : "disabled") << std::endl;
 }
 
 uint64_t ProtocolManager::getCurrentTimestamp() const {
     auto now = std::chrono::system_clock::now();
     auto duration = now.time_since_epoch();
-    return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+    return
+        std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
 }
 
-std::vector<uint8_t> ProtocolManager::formatPacket(const void *data, size_t dataSize) {
+std::vector<uint8_t> ProtocolManager::formatPacket(const void *data,
+        size_t dataSize) {
     std::vector<uint8_t> formattedPacket;
 
     if (_preambule.active) {
@@ -109,7 +121,8 @@ std::vector<uint8_t> ProtocolManager::formatPacket(const void *data, size_t data
         writeUint64(formattedPacket, timestamp, _datetime.length);
     }
     const uint8_t* dataBytes = static_cast<const uint8_t*>(data);
-    formattedPacket.insert(formattedPacket.end(), dataBytes, dataBytes + dataSize);
+    formattedPacket.insert(formattedPacket.end(), dataBytes, dataBytes
+        + dataSize);
     if (_end_of_packet.active) {
         const uint8_t* endBytes = reinterpret_cast<const uint8_t*>(
             _end_of_packet.characters.c_str());
@@ -135,7 +148,8 @@ ProtocolManager::UnformattedPacket ProtocolManager::unformatPacket(
         }
 
         std::string receivedPreambule(formattedData.begin(),
-                                     formattedData.begin() + _preambule.characters.size());
+                                     formattedData.begin()
+                                     + _preambule.characters.size());
         if (receivedPreambule != _preambule.characters) {
             throw std::runtime_error("Invalid preambule in packet");
         }
@@ -144,16 +158,19 @@ ProtocolManager::UnformattedPacket ProtocolManager::unformatPacket(
 
     if (_packet_length.active) {
         if (formattedData.size() < offset + _packet_length.length) {
-            throw std::runtime_error("Packet too small to contain length field");
+            throw std::runtime_error(
+                "Packet too small to contain length field");
         }
         result.hasLength = true;
-        result.packetLength = readUint32(formattedData, offset, _packet_length.length);
+        result.packetLength =
+            readUint32(formattedData, offset, _packet_length.length);
         offset += _packet_length.length;
     }
 
     if (_datetime.active) {
         if (formattedData.size() < offset + _datetime.length) {
-            throw std::runtime_error("Packet too small to contain datetime field");
+            throw std::runtime_error(
+                "Packet too small to contain datetime field");
         }
         result.hasTimestamp = true;
         result.timestamp = readUint64(formattedData, offset, _datetime.length);
@@ -165,19 +182,20 @@ ProtocolManager::UnformattedPacket ProtocolManager::unformatPacket(
         dataSize -= _end_of_packet.characters.size();
     }
     if (_end_of_packet.active) {
-        if (formattedData.size() < offset + dataSize + _end_of_packet.characters.size()) {
+        if (formattedData.size() < offset + dataSize
+            + _end_of_packet.characters.size()) {
             throw std::runtime_error("Packet too small to contain end marker");
         }
 
-        std::string receivedEnd(formattedData.end() - _end_of_packet.characters.size(),
-                               formattedData.end());
+        std::string receivedEnd(formattedData.end()
+            - _end_of_packet.characters.size(), formattedData.end());
         if (receivedEnd != _end_of_packet.characters) {
             throw std::runtime_error("Invalid end marker in packet");
         }
     }
 
     result.data = std::vector<uint8_t>(formattedData.begin() + offset,
-                                       formattedData.begin() + offset + dataSize);
+                                    formattedData.begin() + offset + dataSize);
     return result;
 }
 
@@ -219,7 +237,8 @@ size_t ProtocolManager::getProtocolOverhead() const {
     return overhead;
 }
 
-void ProtocolManager::writeUint32(std::vector<uint8_t>& buffer, uint32_t value) const {
+void ProtocolManager::writeUint32(std::vector<uint8_t>& buffer,
+    uint32_t value) const {
     if (_endianness == Endianness::BIG) {
         for (int i = _packet_length.length - 1; i >= 0; --i) {
             buffer.push_back((value >> (i * 8)) & 0xFF);
