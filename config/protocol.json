@@ -1,0 +1,19 @@
+{
+  "endianness": "little",
+  "preambule": {
+    "active": true,
+    "characters": "\r\t\r\t"
+  },
+  "packet_length": {
+    "active": true,
+    "length": 4
+  },
+  "datetime": {
+    "active": true,
+    "length": 8
+  },
+  "end_of_packet": {
+    "active": true,
+    "characters": "\r\n"
+  }
+}
