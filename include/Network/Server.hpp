@@ -20,7 +20,7 @@ class Server {
     bool setNonBlocking(bool enabled);
     bool setTimeout(int milliseconds);
 
-    bool send(const Address& dest, std::vector<uint8_t> data);
+    bool send(const Address& dest, const std::vector<uint8_t>& data);
     int receive(void* buffer, size_t max_size, Address& sender);
 
     bool isRunning() const { return _running; }

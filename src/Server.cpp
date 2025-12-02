@@ -78,14 +78,14 @@ void Server::stop() {
     _running = false;
 }
 
-bool Server::send(const Address& dest, std::vector<uint8_t> data) {
+bool Server::send(const Address& dest, const std::vector<uint8_t>& data) {
     if (!_running || !_socket.isValid()) {
         std::cerr << "Server is not running or socket is invalid"
                   << std::endl;
         return false;
     }
 
-    if (data.size() == 0) {
+    if (data.empty()) {
         std::cerr << "Invalid data or size"
                   << std::endl;
         return false;
@@ -123,12 +123,12 @@ bool Server::send(const Address& dest, std::vector<uint8_t> data) {
         return false;
     }
 
-    if (static_cast<size_t>(sent) != data.size()) {
+    if (static_cast<size_t>(sent) != fullPacket.size()) {
         std::cerr << "Partial send: "
                   << sent
                   << " / "
-                  << data.size()
-                  << "bytes"
+                  << fullPacket.size()
+                  << " bytes"
                   << std::endl;
         return false;
     }
@@ -149,10 +149,12 @@ int Server::receive(void* buffer, size_t max_size, Address& sender) {
         return -1;
     }
 
+    size_t tempBufferSize = max_size + _protocol.getProtocolOverhead();
+    std::vector<uint8_t> tempBuffer(tempBufferSize);
     int received = 0;
 
     if (_socket.getType() == SocketType::UDP) {
-        received = _socket.receiveFrom(buffer, max_size, sender);
+        received = _socket.receiveFrom(tempBuffer.data(), tempBufferSize, sender);
     } else {
         if (_tcp_clients.empty()) {
             std::cerr << "No TCP clients connected"
@@ -162,8 +164,7 @@ int Server::receive(void* buffer, size_t max_size, Address& sender) {
 
         for (auto& pair : _tcp_clients) {
             if (pair.second == sender) {
-                received = ::recv(pair.first, buffer, max_size, 0);
-
+                received = ::recv(pair.first, tempBuffer.data(), tempBufferSize, 0);
                 if (received == 0) {
                     ::close(pair.first);
                     _tcp_clients.erase(pair.first);
@@ -180,7 +181,30 @@ int Server::receive(void* buffer, size_t max_size, Address& sender) {
         return -1;
     }
 
-    return received;
+    if (received == 0) {
+        return 0;
+    }
+
+    try {
+        tempBuffer.resize(received);
+        ProtocolManager::UnformattedPacket unformatted =
+            _protocol.unformatPacket(tempBuffer);
+        size_t dataToCopy = std::min(unformatted.data.size(), max_size);
+        std::memcpy(buffer, unformatted.data.data(), dataToCopy);
+
+        if (unformatted.data.size() > max_size) {
+            std::cerr << "Warning: Received data truncated ("
+                      << unformatted.data.size()
+                      << " bytes received, "
+                      << max_size
+                      << " bytes buffer)"
+                      << std::endl;
+        }
+        return static_cast<int>(dataToCopy);
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to unformat packet: " << e.what() << std::endl;
+        return -1;
+    }
 }
 
 int Server::acceptClient(Address& client_addr) {

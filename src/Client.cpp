@@ -2,9 +2,10 @@
 #include <iostream>
 #include <cstring>
 #include <string>
+#include <vector>
 
 Client::Client(const std::string& protocol)
-: _socket(), _server_address(), _connected(false) {
+: _socket(), _server_address(), _connected(false), _protocol("config/protocol.json") {
     SocketType type;
 
     if (protocol == "TCP" || protocol == "tcp") {
@@ -63,25 +64,27 @@ void Client::disconnect() {
     std::cout << "Client disconnected" << std::endl;
 }
 
-bool Client::send(const void* data, size_t size) {
+bool Client::send(const std::vector<uint8_t>& data) {
     if (!_connected || !_socket.isValid()) {
         std::cerr << "Client is not connected or socket is invalid"
                   << std::endl;
         return false;
     }
 
-    if (data == nullptr || size == 0) {
+    if (data.empty()) {
         std::cerr << "Invalid data or size"
                   << std::endl;
         return false;
     }
 
+    std::vector<uint8_t> fullPacket = _protocol.formatPacket(data);
+
     int sent = 0;
 
     if (_socket.getType() == SocketType::UDP) {
-        sent = _socket.sendTo(data, size, _server_address);
+        sent = _socket.sendTo(fullPacket.data(), fullPacket.size(), _server_address);
     } else {
-        sent = _socket.send(data, size);
+        sent = _socket.send(fullPacket.data(), fullPacket.size());
     }
 
     if (sent < 0) {
@@ -89,11 +92,11 @@ bool Client::send(const void* data, size_t size) {
         return false;
     }
 
-    if (static_cast<size_t>(sent) != size) {
+    if (static_cast<size_t>(sent) != fullPacket.size()) {
         std::cerr << "Partial send: "
                   << sent
                   << "/"
-                  << size
+                  << fullPacket.size()
                   << " bytes"
                   << std::endl;
         return false;
@@ -114,12 +117,13 @@ int Client::receive(void* buffer, size_t max_size) {
         return -1;
     }
 
+    size_t tempBufferSize = max_size + _protocol.getProtocolOverhead();
+    std::vector<uint8_t> tempBuffer(tempBufferSize);
     int received = 0;
 
     if (_socket.getType() == SocketType::UDP) {
         Address sender;
-        received = _socket.receiveFrom(buffer, max_size, sender);
-
+        received = _socket.receiveFrom(tempBuffer.data(), tempBufferSize, sender);
         if (received > 0 && !(sender == _server_address)) {
             std::cerr << "Error: Received packet from unexpected source: "
                       << sender.getIP()
@@ -129,12 +133,12 @@ int Client::receive(void* buffer, size_t max_size) {
             return -2;
         }
     } else {
-        received = _socket.recv(buffer, max_size);
-
+        received = _socket.recv(tempBuffer.data(), tempBufferSize);
         if (received == 0) {
             std::cerr << "Server closed connection"
                       << std::endl;
             _connected = false;
+            return 0;
         }
     }
 
@@ -143,7 +147,24 @@ int Client::receive(void* buffer, size_t max_size) {
         return -1;
     }
 
-    return received;
+    try {
+        tempBuffer.resize(received);
+        ProtocolManager::UnformattedPacket unformatted = _protocol.unformatPacket(tempBuffer);
+        size_t dataToCopy = std::min(unformatted.data.size(), max_size);
+        std::memcpy(buffer, unformatted.data.data(), dataToCopy);
+        if (unformatted.data.size() > max_size) {
+            std::cerr << "Warning: Received data truncated ("
+                      << unformatted.data.size()
+                      << " bytes received, "
+                      << max_size
+                      << " bytes buffer)"
+                      << std::endl;
+        }
+        return static_cast<int>(dataToCopy);
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to unformat packet: " << e.what() << std::endl;
+        return -1;
+    }
 }
 
 bool Client::setNonBlocking(bool enabled) {
