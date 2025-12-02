@@ -2,8 +2,11 @@
 #include <iostream>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "Network/Server.hpp"
+#include "Network/PacketSerializer.hpp"
+#include "Network/ProtocolManager.hpp"
 
 Server::Server(const std::string& protocol, uint16_t port)
     : _port(port), _socket(), _running(false) {
@@ -26,6 +29,7 @@ Server::Server(const std::string& protocol, uint16_t port)
         std::cerr << "Failed to create socket in constructor"
                   << std::endl;
     }
+    _protocol = ProtocolManager();
 }
 
 Server::~Server() {
@@ -74,27 +78,35 @@ void Server::stop() {
     _running = false;
 }
 
-bool Server::send(const Address& dest, const void* data, size_t size) {
+bool Server::send(const Address& dest, std::vector<uint8_t> data) {
     if (!_running || !_socket.isValid()) {
         std::cerr << "Server is not running or socket is invalid"
                   << std::endl;
         return false;
     }
 
-    if (data == nullptr || size == 0) {
+    if (data.size() == 0) {
         std::cerr << "Invalid data or size"
                   << std::endl;
         return false;
     }
 
-    int sent = 0;
+    std::vector<uint8_t> fullPacket = _protocol.formatPacket(data);
 
+    int sent = 0;
     if (_socket.getType() == SocketType::UDP) {
-        sent = _socket.sendTo(data, size, dest);
+        sent = _socket.sendTo(
+            fullPacket.data(),
+            fullPacket.size(),
+            dest);
     } else {
         for (auto& pair : _tcp_clients) {
             if (pair.second == dest) {
-                sent = ::send(pair.first, data, size, 0);
+                sent = ::send(
+                    pair.first,
+                    fullPacket.data(),
+                    fullPacket.size(),
+                    0);
                 break;
             }
         }
@@ -111,11 +123,11 @@ bool Server::send(const Address& dest, const void* data, size_t size) {
         return false;
     }
 
-    if (static_cast<size_t>(sent) != size) {
+    if (static_cast<size_t>(sent) != data.size()) {
         std::cerr << "Partial send: "
                   << sent
                   << " / "
-                  << size
+                  << data.size()
                   << "bytes"
                   << std::endl;
         return false;

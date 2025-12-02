@@ -2,10 +2,12 @@
 
 #include <string>
 #include <map>
+#include <vector>
 
 #include "Network/Address.hpp"
 #include "Network/Packet.hpp"
 #include "Network/NetworkSocket.hpp"
+#include "Network/ProtocolManager.hpp"
 
 class Server {
  public:
@@ -18,7 +20,7 @@ class Server {
     bool setNonBlocking(bool enabled);
     bool setTimeout(int milliseconds);
 
-    bool send(const Address& dest, const void* data, size_t size);
+    bool send(const Address& dest, std::vector<uint8_t> data);
     int receive(void* buffer, size_t max_size, Address& sender);
 
     bool isRunning() const { return _running; }
@@ -32,6 +34,8 @@ class Server {
     uint16_t _port;
     NetworkSocket _socket;
     bool _running;
+
+    ProtocolManager _protocol;
 
     std::map<int, Address> _tcp_clients;
 };
