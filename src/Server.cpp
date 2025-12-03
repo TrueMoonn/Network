@@ -25,18 +25,11 @@ Server::Server(
     } else if (protocol == "UDP" || protocol == "udp") {
         type = SocketType::UDP;
     } else {
-        std::cerr << "Invalid protocol: "
-                  << protocol
-                  << ", Defaulting to UDP"
-                  << std::endl;
-        type = SocketType::UDP;
+        throw BadProtocol();
     }
     _socket = NetworkSocket(type);
-
-    if (!_socket.create(type)) {
-        std::cerr << "Failed to create socket in constructor"
-                  << std::endl;
-    }
+    if (!_socket.create(type))
+        throw NetworkSocket::SocketCreationError();
 
     if (type == SocketType::TCP) {
         pollfd server_pfd;
@@ -51,28 +44,20 @@ Server::~Server() {
 }
 
 bool Server::start() {
-    if (_running) {
-        std::cerr << "Server is already running"
-                  << std::endl;
-        return false;
-    }
+    if (_running)
+        throw ServerAlreadyStarted();
 
     _socket.setReuseAddr(true);
 
     if (!_socket.bind(_port)) {
-        std::cerr << "Failed to bind socket to port "
-                  << _port
-                  << std::endl;
         _socket.close();
-        return false;
+        throw NetworkSocket::BindFailed();
     }
 
     if (_socket.getType() == SocketType::TCP) {
         if (!_socket.listen(10)) {
-            std::cerr << "Failed to listen on TCP socket"
-                      << std::endl;
             _socket.close();
-            return false;
+            throw NetworkSocket::ListenFailed();
         }
     }
 
@@ -88,92 +73,70 @@ void Server::stop() {
     _udp_clients.clear();
     _tcp_clients.clear();
 
-    if (_socket.isValid()) {
+    if (_socket.isValid())
         _socket.close();
-    }
     _running = false;
 }
 
 int Server::udpSend(const Address& dest, std::vector<uint8_t> data) {
-    if (!_running || !_socket.isValid()) {
-        perror("Server is not running or socket is invalid");
-        return NOTSENT;
-    }
+    if (!_running)
+        throw ServerNotStarted();
+    if (!_socket.isValid())
+        throw NetworkSocket::SocketNotCreated();
+    if (_socket.getType() == SocketType::TCP)
+        throw NetworkSocket::InvalidSocketType(
+            "Socket type is TCP, udpSend() is for UDP only");
 
-    if (data.empty()) {
-        perror("Invalid data or size");
-        return NOTSENT;
-    }
-
-    if (_socket.getType() == SocketType::TCP) {
-        perror("Socket type is TCP, udpSend() is for UDP only");
-        return NOTSENT;
-    }
+    if (data.empty())
+        throw BadData();
 
     auto it = _udp_clients.find(dest);
-    if (it == _udp_clients.end()) {
-        perror(
-    "Destination address is unknown, for security reasons, will not send data");
-        return NOTSENT;
-    }
+    if (it == _udp_clients.end())
+        throw UnknownAddressOrFd();
 
     std::vector<uint8_t> fullPacket = _protocol.formatPacket(data);
 
     int sent = _socket.sendTo(fullPacket.data(), fullPacket.size(), dest);
 
-    if (sent < 0) {
-        perror("Failed to send data");
-        return NOTSENT;
-    }
+    if (sent < 0)
+        throw NetworkSocket::DataSendFailed();
     return sent;
 }
 
 int Server::tcpSend(int dest, std::vector<uint8_t> data) {
-    if (!_running || !_socket.isValid()) {
-        perror("Server is not running or socket is invalid");
-        return NOTSENT;
-    }
+    if (!_running)
+        throw ServerNotStarted();
+    if (!_socket.isValid())
+        throw NetworkSocket::SocketNotCreated();
+    if (_socket.getType() == SocketType::UDP)
+        throw NetworkSocket::InvalidSocketType(
+            "Socket type is UDP, tcpSend() is for UDP only");
 
-    if (data.empty()) {
-        perror("Invalid data or size");
-        return NOTSENT;
-    }
-
-    if (_socket.getType() == SocketType::TCP) {
-        perror("Socket type is TCP, udpSend() is for UDP only");
-        return NOTSENT;
-    }
+    if (data.empty())
+        throw BadData();
 
     auto it = _tcp_clients.find(dest);
-    if (it == _tcp_clients.end()) {
-        perror(
-    "Destination fd is unknown, for security reasons, will not send data");
-        return NOTSENT;
-    }
+    if (it == _tcp_clients.end())
+        throw UnknownAddressOrFd();
 
     std::vector<uint8_t> fullPacket = _protocol.formatPacket(data);
 
     int sent = ::send(dest, fullPacket.data(), fullPacket.size(), 0);
 
-    if (sent == 0) {
-        perror("Failed to send data");
-        return NOTSENT;
-    }
+    if (sent == 0)
+        throw NetworkSocket::DataSendFailed();
     return sent;
 }
 
 std::vector<Address> Server::udpReceive(int timeout, int maxInputs) {
     std::vector<Address> results;
-
-    if (!_running || !_socket.isValid()) {
-        perror("Server is not running or socket is invalid");
-        return results;
-    }
-
-    if (_socket.getType() == SocketType::TCP) {
-        perror("Socket type is TCP, udpReceive() is for UDP only");
-        return results;
-    }
+    if (!_running)
+        throw ServerNotStarted();
+    if (!_socket.isValid())
+        throw NetworkSocket::SocketNotCreated();
+    if (_socket.getType() == SocketType::UDP)
+        throw NetworkSocket::InvalidSocketType(
+            "Socket type is TCP, udpReceive() is for UDP only");
 
     pollfd pfd;
     pfd.fd = _socket.getSocket();
@@ -222,22 +185,22 @@ std::vector<Address> Server::udpReceive(int timeout, int maxInputs) {
 std::vector<int> Server::tcpReceive(int timeout) {
     std::vector<int> results;
 
-    if (_tcp_fds.empty()) {
-        std::cerr << "No TCP socket available" << std::endl;
-        return results;
-    }
-
-    if (_socket.getType() == SocketType::UDP) {
-        perror("Socket type is UDP, tcpReceive() is for TCP only");
-        return results;
-    }
+    if (!_running)
+        throw ServerNotStarted();
+    if (!_socket.isValid())
+        throw NetworkSocket::SocketNotCreated();
+    if (_tcp_fds.empty())
+        throw NoTcpSocket();
+    if (_socket.getType() == SocketType::UDP)
+        throw NetworkSocket::InvalidSocketType(
+            "Socket type is UDP, tcpReceive() is for TCP only");
 
     for (auto& pfd : _tcp_fds)
         pfd.revents = 0;
 
     int poll_result = poll(_tcp_fds.data(), _tcp_fds.size(), timeout);
     if (poll_result < 0)
-        return results;
+        throw PollError();
     if (poll_result == 0)
         return results;
 
@@ -284,24 +247,18 @@ std::vector<int> Server::tcpReceive(int timeout) {
 }
 
 int Server::acceptClient(Address& client_addr, uint currentTime) {
-    if (_socket.getType() != SocketType::TCP) {
-        std::cerr << "acceptClient() is only for TCP mode"
-                  << std::endl;
-        return NOFD;
-    }
+    if (_socket.getType() != SocketType::TCP)
+        throw NetworkSocket::InvalidSocketType(
+            "acceptClient() is only for TCP mode");
 
-    if (!_running || !_socket.isValid()) {
-        std::cerr << "Server is not running"
-                  << std::endl;
-        return NOFD;
-    }
+    if (!_running)
+        throw ServerNotStarted();
+    if (!_socket.isValid())
+        throw NetworkSocket::SocketNotCreated();
 
     int client_fd = _socket.accept(client_addr);
-    if (client_fd < 0) {
-        std::cerr << "Failed to accept client connection"
-                  << std::endl;
-        return NOFD;
-    }
+    if (client_fd < 0)
+            throw NetworkSocket::AcceptFailed();
 
     ClientInfo newClient;
     newClient.lastPacketTime = currentTime;

@@ -48,6 +48,56 @@ class Server {
     #define NOFD -1
     #define NOTSENT -1
 
+    class BadProtocol : public std::exception {
+     public:
+        const char* what() const noexcept override {
+            return "Bad protocol given, defaulting to UDP";
+        }
+    };
+
+    class NoTcpSocket : public std::exception {
+     public:
+        const char* what() const noexcept override {
+            return "No TCP Socket in fds for poll";
+        }
+    };
+
+    class ServerNotStarted : public std::exception {
+     public:
+        const char* what() const noexcept override {
+            return "Start the server before trying to send or receive data";
+        }
+    };
+
+    class ServerAlreadyStarted : public std::exception {
+     public:
+        const char* what() const noexcept override {
+            return "The server is already running";
+        }
+    };
+
+    class PollError : public std::exception {
+     public:
+        const char* what() const noexcept override {
+            return "Poll error in receive";
+        }
+    };
+
+    class BadData : public std::exception {
+     public:
+        const char* what() const noexcept override {
+            return "Invalid data or size";
+        }
+    };
+
+    class UnknownAddressOrFd : public std::exception {
+     public:
+        const char* what() const noexcept override {
+            return "Unknown addr/fd, for security reasons, will not send data";
+        }
+    };
+
+
  private:
     uint16_t _port;
     NetworkSocket _socket;
