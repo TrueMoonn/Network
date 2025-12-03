@@ -1,7 +1,7 @@
 #pragma once
-#include "Network/Address.hpp"
 #include <cstddef>
 #include <cstdint>
+#include "Network/Address.hpp"
 
 enum class SocketType {
     UDP,
@@ -9,7 +9,7 @@ enum class SocketType {
 };
 
 class NetworkSocket {
-public:
+ public:
     explicit NetworkSocket(SocketType = SocketType::UDP);
     ~NetworkSocket();
 
@@ -36,7 +36,7 @@ public:
     int send(const void* data, size_t size);
     int recv(void* buffer, size_t buffer_size);
 
-private:
+ private:
     int _socket;
     bool _is_valid;
     SocketType _type;
