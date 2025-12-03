@@ -10,7 +10,7 @@ enum class SocketType {
 
 class NetworkSocket {
 public:
-    NetworkSocket();
+    explicit NetworkSocket(SocketType = SocketType::UDP);
     ~NetworkSocket();
 
     bool create(SocketType type = SocketType::UDP);

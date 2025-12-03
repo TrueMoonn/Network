@@ -1,5 +1,7 @@
 #pragma once
 
+#include <poll.h>
+
 #include <string>
 #include <map>
 #include <vector>
@@ -11,7 +13,7 @@
 
 class Server {
  public:
-    explicit Server(const std::string& protocol, uint16_t port);
+    explicit Server(const std::string&, uint16_t, ProtocolManager);
     ~Server();
 
     bool start();
@@ -22,6 +24,7 @@ class Server {
 
     bool send(const Address& dest, const std::vector<uint8_t>& data);
     int receive(void* buffer, size_t max_size, Address& sender);
+    int loopReceive(int timeout_ms, size_t maxInputs);
 
     bool isRunning() const { return _running; }
     SocketType getProtocol() const { return _socket.getType(); }
@@ -37,5 +40,8 @@ class Server {
 
     ProtocolManager _protocol;
 
-    std::map<int, Address> _tcp_clients;
+    std::vector<pollfd> _tcp_fds;
+
+    // format [ IP:PORT, [01,02,03,04] ], ...
+    std::vector<std::pair<Address, std::vector<uint8_t> > > _clients;
 };
