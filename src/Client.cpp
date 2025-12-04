@@ -3,6 +3,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 Client::Client(const std::string& protocol)
 : _socket(), _server_address(), _connected(false), _protocol("config/protocol.json") {
@@ -79,27 +80,30 @@ bool Client::send(const std::vector<uint8_t>& data) {
 
     std::vector<uint8_t> fullPacket = _protocol.formatPacket(data);
 
-    int sent = 0;
-
     if (_socket.getType() == SocketType::UDP) {
-        sent = _socket.sendTo(fullPacket.data(), fullPacket.size(), _server_address);
+        int sent = _socket.sendTo(fullPacket.data(), fullPacket.size(), _server_address);
+        if (sent < 0) {
+            std::cerr << "Failed to send data" << std::endl;
+            return false;
+        }
+        if (static_cast<size_t>(sent) != fullPacket.size()) {
+            std::cerr << "Partial UDP send: " << sent << "/" << fullPacket.size() << " bytes" << std::endl;
+            return false;
+        }
     } else {
-        sent = _socket.send(fullPacket.data(), fullPacket.size());
-    }
-
-    if (sent < 0) {
-        std::cerr << "Failed to send data" << std::endl;
-        return false;
-    }
-
-    if (static_cast<size_t>(sent) != fullPacket.size()) {
-        std::cerr << "Partial send: "
-                  << sent
-                  << "/"
-                  << fullPacket.size()
-                  << " bytes"
-                  << std::endl;
-        return false;
+        size_t totalSent = 0;
+        while (totalSent < fullPacket.size()) {
+            int sent = _socket.send(fullPacket.data() + totalSent, fullPacket.size() - totalSent);
+            if (sent < 0) {
+                std::cerr << "Failed to send data" << std::endl;
+                return false;
+            }
+            if (sent == 0) {
+                std::cerr << "Connection closed by peer during send" << std::endl;
+                return false;
+            }
+            totalSent += sent;
+        }
     }
 
     return true;
@@ -177,4 +181,183 @@ bool Client::setTimeout(int milliseconds) {
     if (!_socket.isValid())
         return false;
     return _socket.setTimeout(milliseconds);
+}
+
+std::vector<std::vector<uint8_t>> Client::receiveAll() {
+    std::vector<std::vector<uint8_t>> result;
+
+    if (!_connected || !_socket.isValid()) {
+        std::cerr << "Client is not connected or socket is invalid" << std::endl;
+        return result;
+    }
+
+    if (_socket.getType() == SocketType::UDP) {
+        size_t bufferSize = BUFSIZ + _protocol.getProtocolOverhead();
+        std::vector<uint8_t> tempBuffer(bufferSize);
+
+        while (true) {
+            Address sender;
+            int received = _socket.receiveFrom(tempBuffer.data(), bufferSize, sender);
+            if (received <= 0) {
+                break;
+            }
+            if (!(sender == _server_address)) {
+                std::cerr << "Warning: Received UDP packet from unexpected source: "
+                          << sender.getIP() << ":" << sender.getPort() << std::endl;
+                continue;
+            }
+
+            try {
+                tempBuffer.resize(received);
+                ProtocolManager::UnformattedPacket unformatted = _protocol.unformatPacket(tempBuffer);
+                result.push_back(unformatted.data);
+            } catch (const std::exception& e) {
+                std::cerr << "Failed to unformat UDP packet: " << e.what() << std::endl;
+            }
+        }
+    } else {
+        size_t bufferSize = BUFSIZ + _protocol.getProtocolOverhead();
+        std::vector<uint8_t> tempBuffer(bufferSize);
+
+        while (true) {
+            int received = _socket.recv(tempBuffer.data(), bufferSize);
+
+            if (received == 0) {
+                std::cerr << "Server closed connection" << std::endl;
+                _connected = false;
+                break;
+            }
+
+            if (received < 0) {
+                break;
+            }
+
+            _input_buffer.insert(_input_buffer.end(),
+                                tempBuffer.begin(),
+                                tempBuffer.begin() + received);
+        }
+
+        result = extractPacketsFromBuffer();
+    }
+
+    return result;
+}
+
+std::vector<std::vector<uint8_t>> Client::extractPacketsFromBuffer() {
+    std::vector<std::vector<uint8_t>> result;
+
+    ProtocolManager::preambule preamble = _protocol.getPreambule();
+    ProtocolManager::datetime datetime = _protocol.getDatetime();
+    ProtocolManager::packet_length packetLength = _protocol.getPacketLength();
+    ProtocolManager::end_of_packet packetEnd = _protocol.getEndOfPacket();
+    ProtocolManager::Endianness endianness = _protocol.getEndianness();
+
+    while (!_input_buffer.empty()) {
+        size_t offset = 0;
+        if (preamble.active) {
+            if (_input_buffer.size() < preamble.characters.size())
+                break;
+            offset += preamble.characters.size();
+        }
+
+        uint32_t dataLength = 0;
+
+        if (packetLength.active) {
+            if (_input_buffer.size() < offset + packetLength.length)
+                break;
+
+            if (endianness == ProtocolManager::Endianness::LITTLE) {
+                if (packetLength.length == 4) {
+                    dataLength = static_cast<uint32_t>(_input_buffer[offset]) |
+                               (static_cast<uint32_t>(_input_buffer[offset + 1]) << 8) |
+                               (static_cast<uint32_t>(_input_buffer[offset + 2]) << 16) |
+                               (static_cast<uint32_t>(_input_buffer[offset + 3]) << 24);
+                } else if (packetLength.length == 2) {
+                    dataLength = static_cast<uint32_t>(_input_buffer[offset]) |
+                               (static_cast<uint32_t>(_input_buffer[offset + 1]) << 8);
+                } else if (packetLength.length == 1) {
+                    dataLength = _input_buffer[offset];
+                }
+            } else {
+                if (packetLength.length == 4) {
+                    dataLength = (static_cast<uint32_t>(_input_buffer[offset]) << 24) |
+                               (static_cast<uint32_t>(_input_buffer[offset + 1]) << 16) |
+                               (static_cast<uint32_t>(_input_buffer[offset + 2]) << 8) |
+                               static_cast<uint32_t>(_input_buffer[offset + 3]);
+                } else if (packetLength.length == 2) {
+                    dataLength = (static_cast<uint32_t>(_input_buffer[offset]) << 8) |
+                               static_cast<uint32_t>(_input_buffer[offset + 1]);
+                } else if (packetLength.length == 1) {
+                    dataLength = _input_buffer[offset];
+                }
+            }
+
+            offset += packetLength.length;
+            uint32_t actualDataLength = dataLength;
+            if (datetime.active) {
+                if (dataLength < static_cast<uint32_t>(datetime.length)) {
+                    break;
+                }
+                actualDataLength = dataLength - datetime.length;
+            }
+
+            if (datetime.active) {
+                if (_input_buffer.size() < offset + datetime.length)
+                    break;
+                offset += datetime.length;
+            }
+
+            if (_input_buffer.size() < offset + actualDataLength)
+                break;
+
+            std::vector<uint8_t> packetData(
+                _input_buffer.begin() + offset,
+                _input_buffer.begin() + offset + actualDataLength);
+
+            result.push_back(packetData);
+            offset += actualDataLength;
+
+            if (packetEnd.active) {
+                if (_input_buffer.size() < offset + packetEnd.characters.size())
+                    break;
+                offset += packetEnd.characters.size();
+            }
+            _input_buffer.erase(_input_buffer.begin(),
+                               _input_buffer.begin() + offset);
+
+        } else if (packetEnd.active) {
+            if (datetime.active) {
+                if (_input_buffer.size() < offset + datetime.length)
+                    break;
+                offset += datetime.length;
+            }
+            std::string endMarker = packetEnd.characters;
+            auto it = std::search(
+                _input_buffer.begin() + offset,
+                _input_buffer.end(),
+                endMarker.begin(),
+                endMarker.end());
+
+            if (it == _input_buffer.end())
+                break;
+
+            size_t dataEnd = std::distance(_input_buffer.begin(), it);
+            size_t dataStart = offset;
+            dataLength = dataEnd - dataStart;
+
+            std::vector<uint8_t> packetData(
+                _input_buffer.begin() + dataStart,
+                _input_buffer.begin() + dataEnd);
+
+            result.push_back(packetData);
+
+            _input_buffer.erase(_input_buffer.begin(),
+                               _input_buffer.begin() + dataEnd + endMarker.size());
+        } else {
+            std::cerr << "Protocol error: no packet_length or end_of_packet" << std::endl;
+            break;
+        }
+    }
+
+    return result;
 }

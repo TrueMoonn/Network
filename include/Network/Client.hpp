@@ -7,6 +7,7 @@
 #include "Network/Packet.hpp"
 #include "Network/NetworkSocket.hpp"
 #include "Network/ProtocolManager.hpp"
+#include "Network/PacketSerializer.hpp"
 
 class Client {
  public:
@@ -17,7 +18,15 @@ class Client {
     void disconnect();
 
     bool send(const std::vector<uint8_t>& data);
+
+    template<typename T>
+    bool sendPacket(const T& packet) {
+        std::vector<uint8_t> data = PacketSerializer::serialize(packet);
+        return send(data);
+    }
+
     int receive(void* buffer, size_t max_size);
+    std::vector<std::vector<uint8_t>> receiveAll();
 
     bool setNonBlocking(bool enabled);
     bool setTimeout(int milliseconds);
@@ -31,4 +40,8 @@ class Client {
     Address _server_address;
     bool _connected;
     ProtocolManager _protocol;
+
+    std::vector<uint8_t> _input_buffer;
+
+    std::vector<std::vector<uint8_t>> extractPacketsFromBuffer();
 };
