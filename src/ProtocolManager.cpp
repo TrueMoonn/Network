@@ -180,10 +180,19 @@ ProtocolManager::UnformattedPacket ProtocolManager::unformatPacket(
         offset += _datetime.length;
     }
 
-    size_t dataSize = formattedData.size() - offset;
-    if (_end_of_packet.active) {
-        dataSize -= _end_of_packet.characters.size();
+    size_t dataSize;
+    if (_packet_length.active && result.hasLength) {
+        dataSize = result.packetLength;
+        if (_datetime.active) {
+            dataSize -= _datetime.length;
+        }
+    } else {
+        dataSize = formattedData.size() - offset;
+        if (_end_of_packet.active) {
+            dataSize -= _end_of_packet.characters.size();
+        }
     }
+
     if (_end_of_packet.active) {
         if (formattedData.size() < offset + dataSize
             + _end_of_packet.characters.size()) {
