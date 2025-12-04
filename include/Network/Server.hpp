@@ -48,6 +48,14 @@ class Server {
         std::vector<uint8_t> output;
     };
 
+    // Accessors for testing purposes
+    const std::unordered_map<Address, ClientInfo>& getUdpClients() const;
+    const std::unordered_map<int, ClientInfo>& getTcpClients() const;
+
+    // Non-const accessors for test manipulation
+    std::unordered_map<Address, ClientInfo>& getUdpClientsRef();
+    std::unordered_map<int, ClientInfo>& getTcpClientsRef();
+
     #define NB_SERVERFD 1
     #define NOFD -1
     #define NOTSENT -1
@@ -102,7 +110,7 @@ class Server {
     };
 
  private:
-    std::vector<std::vector<uint8_t>> Server::getDataFromBuffer(
+    std::vector<std::vector<uint8_t>> getDataFromBuffer(
             int nbPackets, ClientInfo &client);
 
     uint16_t _port;
@@ -113,10 +121,10 @@ class Server {
 
     std::vector<pollfd> _tcp_fds;
 
+    std::unordered_map<int, Address> _tcp_links;
+    
     std::unordered_map<Address, ClientInfo> _udp_clients;
     std::unordered_map<int, ClientInfo> _tcp_clients;
-
-    std::unordered_map<int, Address> _tcp_links;
 
     // // format [ IP:PORT, [01,02,03,04] ], ...
     // std::vector<std::pair<Address, std::vector<uint8_t> > > _clients;

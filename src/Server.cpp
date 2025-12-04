@@ -164,11 +164,16 @@ int Server::tcpSend(int dest, std::vector<uint8_t> data) {
 
     std::vector<uint8_t> fullPacket = _protocol.formatPacket(data);
 
-    int sent = ::send(dest, fullPacket.data(), fullPacket.size(), 0);
-
-    if (sent == 0)
-        throw NetworkSocket::DataSendFailed();
-    return sent;
+    size_t totalSent = 0;
+    while (totalSent < fullPacket.size()) {
+        int sent = ::send(dest, fullPacket.data() + totalSent, fullPacket.size() - totalSent, 0);
+        if (sent < 0)
+            throw NetworkSocket::DataSendFailed();
+        if (sent == 0)
+            throw NetworkSocket::DataSendFailed();
+        totalSent += sent;
+    }
+    return totalSent;
 }
 
 std::vector<Address> Server::udpReceive(int timeout, int maxInputs) {
@@ -177,7 +182,7 @@ std::vector<Address> Server::udpReceive(int timeout, int maxInputs) {
         throw ServerNotStarted();
     if (!_socket.isValid())
         throw NetworkSocket::SocketNotCreated();
-    if (_socket.getType() == SocketType::UDP)
+    if (_socket.getType() == SocketType::TCP)
         throw NetworkSocket::InvalidSocketType(
             "Socket type is TCP, udpReceive() is for UDP only");
 
@@ -199,7 +204,7 @@ std::vector<Address> Server::udpReceive(int timeout, int maxInputs) {
         std::vector<uint8_t> buffer(bufsiz);
 
         int received = _socket.receiveFrom(buffer.data(), bufsiz, sender);
-        if (received < 0)
+        if (received <= 0)
             break;
 
         buffer.resize(received);
@@ -282,7 +287,7 @@ std::vector<int> Server::tcpReceive(int timeout) {
             it->second.lastPacketTime = currentTime;
             it->second.input.insert(it->second.input.end(),
                                     buffer.begin(),
-                                    buffer.end());
+                                    buffer.begin() + received);
             results.push_back(client_fd);
         }
     }
@@ -298,13 +303,13 @@ std::vector<std::vector<uint8_t>> Server::getDataFromBuffer(
     ProtocolManager::datetime datetime = _protocol.getDatetime();
     ProtocolManager::packet_length packetLength = _protocol.getPacketLength();
     ProtocolManager::end_of_packet packetEnd = _protocol.getEndOfPacket();
+    ProtocolManager::Endianness endianness = _protocol.getEndianness();
 
     int packetsToUnpack = (nbPackets < 0) ? 1000 : nbPackets;
     int packetCount = 0;
 
     while (!client.input.empty() && packetCount < packetsToUnpack) {
         size_t offset = 0;
-
         if (preamble.active) {
             if (client.input.size() < preamble.characters.size())
                 break;
@@ -317,20 +322,40 @@ std::vector<std::vector<uint8_t>> Server::getDataFromBuffer(
             if (client.input.size() < offset + packetLength.length)
                 break;
 
-            std::vector<uint8_t> lengthBytes(
-                    client.input.begin() + offset,
-                    client.input.begin() + offset + packetLength.length);
-
-            // si y'a un probleme pdt les tests ca vient surement de par la
-            if (packetLength.length == 4)
-                dataLength = (lengthBytes[0] << 24) | (lengthBytes[1] << 16) |
-                        (lengthBytes[2] << 8) | lengthBytes[3];
-            else if (packetLength.length == 2)
-                dataLength = (lengthBytes[0] << 8) | lengthBytes[1];
-            else if (packetLength.length == 1)
-                dataLength = lengthBytes[0];
+            if (endianness == ProtocolManager::Endianness::LITTLE) {
+                if (packetLength.length == 4) {
+                    dataLength = static_cast<uint32_t>(client.input[offset]) |
+                               (static_cast<uint32_t>(client.input[offset + 1]) << 8) |
+                               (static_cast<uint32_t>(client.input[offset + 2]) << 16) |
+                               (static_cast<uint32_t>(client.input[offset + 3]) << 24);
+                } else if (packetLength.length == 2) {
+                    dataLength = static_cast<uint32_t>(client.input[offset]) |
+                               (static_cast<uint32_t>(client.input[offset + 1]) << 8);
+                } else if (packetLength.length == 1) {
+                    dataLength = client.input[offset];
+                }
+            } else {
+                if (packetLength.length == 4) {
+                    dataLength = (static_cast<uint32_t>(client.input[offset]) << 24) |
+                               (static_cast<uint32_t>(client.input[offset + 1]) << 16) |
+                               (static_cast<uint32_t>(client.input[offset + 2]) << 8) |
+                               static_cast<uint32_t>(client.input[offset + 3]);
+                } else if (packetLength.length == 2) {
+                    dataLength = (static_cast<uint32_t>(client.input[offset]) << 8) |
+                               static_cast<uint32_t>(client.input[offset + 1]);
+                } else if (packetLength.length == 1) {
+                    dataLength = client.input[offset];
+                }
+            }
 
             offset += packetLength.length;
+            uint32_t actualDataLength = dataLength;
+            if (datetime.active) {
+                if (dataLength < static_cast<uint32_t>(datetime.length)) {
+                    break;
+                }
+                actualDataLength = dataLength - datetime.length;
+            }
 
             if (datetime.active) {
                 if (client.input.size() < offset + datetime.length)
@@ -338,17 +363,25 @@ std::vector<std::vector<uint8_t>> Server::getDataFromBuffer(
                 offset += datetime.length;
             }
 
-            if (client.input.size() < offset + dataLength)
+            if (client.input.size() < offset + actualDataLength)
                 break;
 
             std::vector<uint8_t> packetData(
                     client.input.begin() + offset,
-                    client.input.begin() + offset + dataLength);
+                    client.input.begin() + offset + actualDataLength);
 
             result.push_back(packetData);
+            packetCount++;
+            offset += actualDataLength;
+            if (packetEnd.active) {
+                if (client.input.size() < offset + packetEnd.characters.size()) {
+                    break;
+                }
+                offset += packetEnd.characters.size();
+            }
 
             client.input.erase(client.input.begin(),
-                    client.input.begin() + offset + dataLength);
+                    client.input.begin() + offset);
 
         } else if (packetEnd.active) {
             if (datetime.active) {
@@ -376,14 +409,13 @@ std::vector<std::vector<uint8_t>> Server::getDataFromBuffer(
                     client.input.begin() + dataEnd);
 
             result.push_back(packetData);
+            packetCount++;
 
             client.input.erase(client.input.begin(),
                     client.input.begin() + dataEnd + endMarker.size());
         } else {
             throw BadData();
         }
-
-        packetCount++;
     }
 
     return result;
@@ -408,4 +440,20 @@ std::vector<std::vector<uint8_t>> Server::unpack(
     ClientInfo& client = it->second;
 
     return getDataFromBuffer(nbPackets, client);
+}
+
+const std::unordered_map<Address, Server::ClientInfo>& Server::getUdpClients() const {
+    return _udp_clients;
+}
+
+const std::unordered_map<int, Server::ClientInfo>& Server::getTcpClients() const {
+    return _tcp_clients;
+}
+
+std::unordered_map<Address, Server::ClientInfo>& Server::getUdpClientsRef() {
+    return _udp_clients;
+}
+
+std::unordered_map<int, Server::ClientInfo>& Server::getTcpClientsRef() {
+    return _tcp_clients;
 }
