@@ -31,6 +31,10 @@ class Server {
     std::vector<int> tcpReceive(int timeout);
     std::vector<Address> udpReceive(int timeout, int maxInputs);
 
+    // lecture
+    std::vector<std::vector<uint8_t>> unpack(int src, int nbPackets);
+    std::vector<std::vector<uint8_t>> unpack(const Address& src, int nbPackets);
+
     bool isRunning() const { return _running; }
     SocketType getProtocol() const { return _socket.getType(); }
     uint16_t getPort() const { return _port; }
@@ -93,12 +97,14 @@ class Server {
     class UnknownAddressOrFd : public std::exception {
      public:
         const char* what() const noexcept override {
-            return "Unknown addr/fd, for security reasons, will not send data";
+            return "Unknown address or fd, will ignore tasks";
         }
     };
 
-
  private:
+    std::vector<std::vector<uint8_t>> Server::getDataFromBuffer(
+            int nbPackets, ClientInfo &client);
+
     uint16_t _port;
     NetworkSocket _socket;
     bool _running;

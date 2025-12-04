@@ -27,6 +27,7 @@ Server::Server(
     } else {
         throw BadProtocol();
     }
+
     _socket = NetworkSocket(type);
     if (!_socket.create(type))
         throw NetworkSocket::SocketCreationError();
@@ -41,6 +42,18 @@ Server::Server(
 }
 Server::~Server() {
     stop();
+}
+
+bool Server::setNonBlocking(bool enabled) {
+    if (!_socket.isValid())
+        return false;
+    return _socket.setNonBlocking(enabled);
+}
+
+bool Server::setTimeout(int milliseconds) {
+    if (!_socket.isValid())
+        return false;
+    return _socket.setTimeout(milliseconds);
 }
 
 bool Server::start() {
@@ -76,6 +89,36 @@ void Server::stop() {
     if (_socket.isValid())
         _socket.close();
     _running = false;
+}
+
+int Server::acceptClient(Address& client_addr, uint currentTime) {
+    if (_socket.getType() != SocketType::TCP)
+        throw NetworkSocket::InvalidSocketType(
+            "acceptClient() is only for TCP mode");
+
+    if (!_running)
+        throw ServerNotStarted();
+    if (!_socket.isValid())
+        throw NetworkSocket::SocketNotCreated();
+
+    int client_fd = _socket.accept(client_addr);
+    if (client_fd < 0)
+            throw NetworkSocket::AcceptFailed();
+
+    ClientInfo newClient;
+    newClient.lastPacketTime = currentTime;
+    newClient.input.clear();
+    newClient.output.clear();
+
+    _tcp_clients.insert(std::make_pair(client_fd, newClient));
+
+    pollfd client_pfd;
+    client_pfd.fd = client_fd;
+    client_pfd.events = POLLIN;
+    client_pfd.revents = 0;
+    _tcp_fds.push_back(client_pfd);
+
+    return client_fd;
 }
 
 int Server::udpSend(const Address& dest, std::vector<uint8_t> data) {
@@ -246,44 +289,123 @@ std::vector<int> Server::tcpReceive(int timeout) {
     return results;
 }
 
-int Server::acceptClient(Address& client_addr, uint currentTime) {
-    if (_socket.getType() != SocketType::TCP)
-        throw NetworkSocket::InvalidSocketType(
-            "acceptClient() is only for TCP mode");
+// sketchy j'ai pas le temps de tester
+std::vector<std::vector<uint8_t>> Server::getDataFromBuffer(
+        int nbPackets, ClientInfo& client) {
+    std::vector<std::vector<uint8_t>> result;
 
-    if (!_running)
-        throw ServerNotStarted();
-    if (!_socket.isValid())
-        throw NetworkSocket::SocketNotCreated();
+    ProtocolManager::preambule preamble = _protocol.getPreambule();
+    ProtocolManager::datetime datetime = _protocol.getDatetime();
+    ProtocolManager::packet_length packetLength = _protocol.getPacketLength();
+    ProtocolManager::end_of_packet packetEnd = _protocol.getEndOfPacket();
 
-    int client_fd = _socket.accept(client_addr);
-    if (client_fd < 0)
-            throw NetworkSocket::AcceptFailed();
+    int packetsToUnpack = (nbPackets < 0) ? 1000 : nbPackets;
+    int packetCount = 0;
 
-    ClientInfo newClient;
-    newClient.lastPacketTime = currentTime;
-    newClient.input.clear();
-    newClient.output.clear();
+    while (!client.input.empty() && packetCount < packetsToUnpack) {
+        size_t offset = 0;
 
-    _tcp_clients.insert(std::make_pair(client_fd, newClient));
+        if (preamble.active) {
+            if (client.input.size() < preamble.characters.size())
+                break;
+            offset += preamble.characters.size();
+        }
 
-    pollfd client_pfd;
-    client_pfd.fd = client_fd;
-    client_pfd.events = POLLIN;
-    client_pfd.revents = 0;
-    _tcp_fds.push_back(client_pfd);
+        uint32_t dataLength = 0;
 
-    return client_fd;
+        if (packetLength.active) {
+            if (client.input.size() < offset + packetLength.length)
+                break;
+
+            std::vector<uint8_t> lengthBytes(
+                    client.input.begin() + offset,
+                    client.input.begin() + offset + packetLength.length);
+
+            // si y'a un probleme pdt les tests ca vient surement de par la
+            if (packetLength.length == 4)
+                dataLength = (lengthBytes[0] << 24) | (lengthBytes[1] << 16) |
+                        (lengthBytes[2] << 8) | lengthBytes[3];
+            else if (packetLength.length == 2)
+                dataLength = (lengthBytes[0] << 8) | lengthBytes[1];
+            else if (packetLength.length == 1)
+                dataLength = lengthBytes[0];
+
+            offset += packetLength.length;
+
+            if (datetime.active) {
+                if (client.input.size() < offset + datetime.length)
+                    break;
+                offset += datetime.length;
+            }
+
+            if (client.input.size() < offset + dataLength)
+                break;
+
+            std::vector<uint8_t> packetData(
+                    client.input.begin() + offset,
+                    client.input.begin() + offset + dataLength);
+
+            result.push_back(packetData);
+
+            client.input.erase(client.input.begin(),
+                    client.input.begin() + offset + dataLength);
+
+        } else if (packetEnd.active) {
+            if (datetime.active) {
+                if (client.input.size() < offset + datetime.length)
+                    break;
+                offset += datetime.length;
+            }
+
+            std::string endMarker = packetEnd.characters;
+            auto it = std::search(
+                    client.input.begin() + offset,
+                    client.input.end(),
+                    endMarker.begin(),
+                    endMarker.end());
+
+            if (it == client.input.end())
+                break;
+
+            size_t dataEnd = std::distance(client.input.begin(), it);
+            size_t dataStart = offset;
+            dataLength = dataEnd - dataStart;
+
+            std::vector<uint8_t> packetData(
+                    client.input.begin() + dataStart,
+                    client.input.begin() + dataEnd);
+
+            result.push_back(packetData);
+
+            client.input.erase(client.input.begin(),
+                    client.input.begin() + dataEnd + endMarker.size());
+        } else {
+            throw BadData();
+        }
+
+        packetCount++;
+    }
+
+    return result;
 }
 
-bool Server::setNonBlocking(bool enabled) {
-    if (!_socket.isValid())
-        return false;
-    return _socket.setNonBlocking(enabled);
+std::vector<std::vector<uint8_t>> Server::unpack(int src, int nbPackets) {
+    auto it = _tcp_clients.find(src);
+    if (it == _tcp_clients.end())
+        throw UnknownAddressOrFd();
+
+    ClientInfo& client = it->second;
+
+    return getDataFromBuffer(nbPackets, client);
 }
 
-bool Server::setTimeout(int milliseconds) {
-    if (!_socket.isValid())
-        return false;
-    return _socket.setTimeout(milliseconds);
+std::vector<std::vector<uint8_t>> Server::unpack(
+        const Address& src, int nbPackets) {
+    auto it = _udp_clients.find(src);
+    if (it == _udp_clients.end())
+        throw UnknownAddressOrFd();
+
+    ClientInfo& client = it->second;
+
+    return getDataFromBuffer(nbPackets, client);
 }
