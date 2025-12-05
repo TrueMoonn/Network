@@ -1,200 +1,47 @@
 #include <unistd.h>
 #include <iostream>
 #include <cstring>
+#include <cstdio>
+#include <ctime>
 #include <string>
+#include <unordered_map>
+#include <utility>
+#include <algorithm>
+#include <vector>
 
 #include "Network/Server.hpp"
+#include "Network/PacketSerializer.hpp"
+#include "Network/ProtocolManager.hpp"
 
-Server::Server(const std::string& protocol, uint16_t port)
-    : _port(port), _socket(), _running(false) {
+Server::Server(
+    const std::string& protocol,
+    uint16_t port,
+    ProtocolManager protocolManager)
+    : _port(port), _running(false), _protocol(protocolManager) {
 
     SocketType type;
-
     if (protocol == "TCP" || protocol == "tcp") {
         type = SocketType::TCP;
     } else if (protocol == "UDP" || protocol == "udp") {
         type = SocketType::UDP;
     } else {
-        std::cerr << "Invalid protocol: "
-                  << protocol
-                  << ", Defaulting to UDP"
-                  << std::endl;
-        type = SocketType::UDP;
+        throw BadProtocol();
     }
 
-    if (!_socket.create(type)) {
-        std::cerr << "Failed to create socket in constructor"
-                  << std::endl;
+    _socket = NetworkSocket(type);
+    if (!_socket.create(type))
+        throw NetworkSocket::SocketCreationError();
+
+    if (type == SocketType::TCP) {
+        pollfd server_pfd;
+        server_pfd.fd = _socket.getSocket();
+        server_pfd.events = POLLIN;
+        server_pfd.revents = 0;
+        _tcp_fds.push_back(server_pfd);
     }
 }
-
 Server::~Server() {
     stop();
-}
-
-bool Server::start() {
-    if (_running) {
-        std::cerr << "Server is already running"
-                  << std::endl;
-        return false;
-    }
-
-    _socket.setReuseAddr(true);
-
-    if (!_socket.bind(_port)) {
-        std::cerr << "Failed to bind socket to port "
-                  << _port
-                  << std::endl;
-        _socket.close();
-        return false;
-    }
-
-    if (_socket.getType() == SocketType::TCP) {
-        if (!_socket.listen(10)) {
-            std::cerr << "Failed to listen on TCP socket"
-                      << std::endl;
-            _socket.close();
-            return false;
-        }
-    }
-
-    _running = true;
-    return true;
-}
-
-void Server::stop() {
-    for (auto& pair : _tcp_clients) {
-        ::close(pair.first);
-    }
-    _tcp_clients.clear();
-
-    if (_socket.isValid()) {
-        _socket.close();
-    }
-    _running = false;
-}
-
-bool Server::send(const Address& dest, const void* data, size_t size) {
-    if (!_running || !_socket.isValid()) {
-        std::cerr << "Server is not running or socket is invalid"
-                  << std::endl;
-        return false;
-    }
-
-    if (data == nullptr || size == 0) {
-        std::cerr << "Invalid data or size"
-                  << std::endl;
-        return false;
-    }
-
-    int sent = 0;
-
-    if (_socket.getType() == SocketType::UDP) {
-        sent = _socket.sendTo(data, size, dest);
-    } else {
-        for (auto& pair : _tcp_clients) {
-            if (pair.second == dest) {
-                sent = ::send(pair.first, data, size, 0);
-                break;
-            }
-        }
-        if (sent == 0) {
-            std::cerr << "Client not found"
-                      << std::endl;
-            return false;
-        }
-    }
-
-    if (sent < 0) {
-        std::cerr << "Failed to send data"
-                  << std::endl;
-        return false;
-    }
-
-    if (static_cast<size_t>(sent) != size) {
-        std::cerr << "Partial send: "
-                  << sent
-                  << " / "
-                  << size
-                  << "bytes"
-                  << std::endl;
-        return false;
-    }
-
-    return true;
-}
-
-int Server::receive(void* buffer, size_t max_size, Address& sender) {
-    if (!_running || !_socket.isValid()) {
-        std::cerr << "Server is not running or socket is invalid"
-                  << std::endl;
-        return -1;
-    }
-
-    if (buffer == nullptr || max_size == 0) {
-        std::cerr << "Invalid buffer or size"
-                  << std::endl;
-        return -1;
-    }
-
-    int received = 0;
-
-    if (_socket.getType() == SocketType::UDP) {
-        received = _socket.receiveFrom(buffer, max_size, sender);
-    } else {
-        if (_tcp_clients.empty()) {
-            std::cerr << "No TCP clients connected"
-                      << std::endl;
-            return -1;
-        }
-
-        for (auto& pair : _tcp_clients) {
-            if (pair.second == sender) {
-                received = ::recv(pair.first, buffer, max_size, 0);
-
-                if (received == 0) {
-                    ::close(pair.first);
-                    _tcp_clients.erase(pair.first);
-                }
-
-                break;
-            }
-        }
-    }
-
-    if (received < 0) {
-        std::cerr << "Failed to receive data"
-                  << std::endl;
-        return -1;
-    }
-
-    return received;
-}
-
-int Server::acceptClient(Address& client_addr) {
-    if (_socket.getType() != SocketType::TCP) {
-        std::cerr << "acceptClient() is only for TCP mode"
-                  << std::endl;
-        return -1;
-    }
-
-    if (!_running || !_socket.isValid()) {
-        std::cerr << "Server is not running"
-                  << std::endl;
-        return -1;
-    }
-
-    int client_fd = _socket.accept(client_addr);
-
-    if (client_fd < 0) {
-        std::cerr << "Failed to accept client connection"
-                  << std::endl;
-        return -1;
-    }
-
-    _tcp_clients[client_fd] = client_addr;
-
-    return client_fd;
 }
 
 bool Server::setNonBlocking(bool enabled) {
@@ -207,4 +54,410 @@ bool Server::setTimeout(int milliseconds) {
     if (!_socket.isValid())
         return false;
     return _socket.setTimeout(milliseconds);
+}
+
+bool Server::start() {
+    if (_running)
+        throw ServerAlreadyStarted();
+
+    _socket.setReuseAddr(true);
+
+    if (!_socket.bind(_port)) {
+        _socket.close();
+        throw NetworkSocket::BindFailed();
+    }
+
+    if (_socket.getType() == SocketType::TCP) {
+        if (!_socket.listen(10)) {
+            _socket.close();
+            throw NetworkSocket::ListenFailed();
+        }
+    }
+
+    _running = true;
+    return true;
+}
+
+void Server::stop() {
+    for (size_t i = 1; i < _tcp_fds.size(); ++i) {
+        ::close(_tcp_fds[i].fd);
+    }
+    _tcp_fds.clear();
+    _udp_clients.clear();
+    _tcp_clients.clear();
+
+    if (_socket.isValid())
+        _socket.close();
+    _running = false;
+}
+
+int Server::acceptClient(Address& client_addr, uint currentTime) {
+    if (_socket.getType() != SocketType::TCP)
+        throw NetworkSocket::InvalidSocketType(
+            "acceptClient() is only for TCP mode");
+
+    if (!_running)
+        throw ServerNotStarted();
+    if (!_socket.isValid())
+        throw NetworkSocket::SocketNotCreated();
+
+    int client_fd = _socket.accept(client_addr);
+    if (client_fd < 0)
+            throw NetworkSocket::AcceptFailed();
+
+    ClientInfo newClient;
+    newClient.lastPacketTime = currentTime;
+    newClient.input.clear();
+    newClient.output.clear();
+
+    _tcp_clients.insert(std::make_pair(client_fd, newClient));
+
+    pollfd client_pfd;
+    client_pfd.fd = client_fd;
+    client_pfd.events = POLLIN;
+    client_pfd.revents = 0;
+    _tcp_fds.push_back(client_pfd);
+
+    return client_fd;
+}
+
+int Server::udpSend(const Address& dest, std::vector<uint8_t> data) {
+    if (!_running)
+        throw ServerNotStarted();
+    if (!_socket.isValid())
+        throw NetworkSocket::SocketNotCreated();
+    if (_socket.getType() == SocketType::TCP)
+        throw NetworkSocket::InvalidSocketType(
+            "Socket type is TCP, udpSend() is for UDP only");
+
+    if (data.empty())
+        throw BadData();
+
+    auto it = _udp_clients.find(dest);
+    if (it == _udp_clients.end())
+        throw UnknownAddressOrFd();
+
+    std::vector<uint8_t> fullPacket = _protocol.formatPacket(data);
+
+    int sent = _socket.sendTo(fullPacket.data(), fullPacket.size(), dest);
+
+    if (sent < 0)
+        throw NetworkSocket::DataSendFailed();
+    return sent;
+}
+
+int Server::tcpSend(int dest, std::vector<uint8_t> data) {
+    if (!_running)
+        throw ServerNotStarted();
+    if (!_socket.isValid())
+        throw NetworkSocket::SocketNotCreated();
+    if (_socket.getType() == SocketType::UDP)
+        throw NetworkSocket::InvalidSocketType(
+            "Socket type is UDP, tcpSend() is for UDP only");
+
+    if (data.empty())
+        throw BadData();
+
+    auto it = _tcp_clients.find(dest);
+    if (it == _tcp_clients.end())
+        throw UnknownAddressOrFd();
+
+    std::vector<uint8_t> fullPacket = _protocol.formatPacket(data);
+
+    size_t totalSent = 0;
+    while (totalSent < fullPacket.size()) {
+        int sent = ::send(dest, fullPacket.data()
+            + totalSent, fullPacket.size() - totalSent, 0);
+        if (sent < 0)
+            throw NetworkSocket::DataSendFailed();
+        if (sent == 0)
+            throw NetworkSocket::DataSendFailed();
+        totalSent += sent;
+    }
+    return totalSent;
+}
+
+std::vector<Address> Server::udpReceive(int timeout, int maxInputs) {
+    std::vector<Address> results;
+    if (!_running)
+        throw ServerNotStarted();
+    if (!_socket.isValid())
+        throw NetworkSocket::SocketNotCreated();
+    if (_socket.getType() == SocketType::TCP)
+        throw NetworkSocket::InvalidSocketType(
+            "Socket type is TCP, udpReceive() is for UDP only");
+
+    pollfd pfd;
+    pfd.fd = _socket.getSocket();
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+
+    int poll_result = poll(&pfd, 1, timeout);
+    if (poll_result < 0)
+        return results;
+    if (poll_result == 0)
+        return results;
+
+    size_t bufsiz = BUFSIZ + _protocol.getProtocolOverhead();
+
+    for (size_t count = 0; count < maxInputs; count++) {
+        Address sender;
+        std::vector<uint8_t> buffer(bufsiz);
+
+        int received = _socket.receiveFrom(buffer.data(), bufsiz, sender);
+        if (received <= 0)
+            break;
+
+        buffer.resize(received);
+
+        uint currentTime = static_cast<uint>(std::time(nullptr));
+
+        auto it = _udp_clients.find(sender);
+        if (it == _udp_clients.end()) {
+            ClientInfo newClient;
+            newClient.lastPacketTime = currentTime;
+            newClient.input = buffer;
+            newClient.output.clear();
+
+            _udp_clients.insert(std::make_pair(sender, newClient));
+        } else {
+            it->second.input.insert(it->second.input.end(),
+                                    buffer.begin(),
+                                    buffer.end());
+            it->second.lastPacketTime = currentTime;
+        }
+        results.push_back(sender);
+    }
+    return results;
+}
+
+std::vector<int> Server::tcpReceive(int timeout) {
+    std::vector<int> results;
+
+    if (!_running)
+        throw ServerNotStarted();
+    if (!_socket.isValid())
+        throw NetworkSocket::SocketNotCreated();
+    if (_tcp_fds.empty())
+        throw NoTcpSocket();
+    if (_socket.getType() == SocketType::UDP)
+        throw NetworkSocket::InvalidSocketType(
+            "Socket type is UDP, tcpReceive() is for TCP only");
+
+    for (auto& pfd : _tcp_fds)
+        pfd.revents = 0;
+
+    int poll_result = poll(_tcp_fds.data(), _tcp_fds.size(), timeout);
+    if (poll_result < 0)
+        throw PollError();
+    if (poll_result == 0)
+        return results;
+
+    uint currentTime = static_cast<uint>(std::time(nullptr));
+    if (_tcp_fds[0].revents & POLLIN) {
+        Address client_addr;
+        int client_fd = acceptClient(client_addr, currentTime);
+    }
+
+    size_t bufsiz = BUFSIZ + _protocol.getProtocolOverhead();
+    for (size_t i = 1; i < _tcp_fds.size(); i++) {
+        if (!(_tcp_fds[i].revents & POLLIN))
+            continue;
+
+        size_t client_index = i - NB_SERVERFD;
+
+        int client_fd = _tcp_fds[i].fd;
+        std::vector<uint8_t> buffer(bufsiz);
+
+        int received = ::recv(client_fd, buffer.data(), bufsiz, 0);
+
+        if (received == 0) {
+            ::close(client_fd);
+            _tcp_fds.erase(_tcp_fds.begin() + i);
+            _tcp_clients.erase(client_fd);
+            _tcp_links.erase(client_fd);
+            i--;  // recalage
+            continue;
+        }
+
+        if (received < 0)
+            continue;
+
+        auto it = _tcp_clients.find(client_fd);
+        if (it != _tcp_clients.end()) {
+            it->second.lastPacketTime = currentTime;
+            it->second.input.insert(it->second.input.end(),
+                                    buffer.begin(),
+                                    buffer.begin() + received);
+            results.push_back(client_fd);
+        }
+    }
+    return results;
+}
+
+// sketchy j'ai pas le temps de tester
+std::vector<std::vector<uint8_t>> Server::getDataFromBuffer(
+        int nbPackets, ClientInfo& client) {
+    std::vector<std::vector<uint8_t>> result;
+
+    ProtocolManager::preambule preamble = _protocol.getPreambule();
+    ProtocolManager::datetime datetime = _protocol.getDatetime();
+    ProtocolManager::packet_length packetLength = _protocol.getPacketLength();
+    ProtocolManager::end_of_packet packetEnd = _protocol.getEndOfPacket();
+    ProtocolManager::Endianness endianness = _protocol.getEndianness();
+
+    int packetsToUnpack = (nbPackets < 0) ? 1000 : nbPackets;
+    int packetCount = 0;
+
+    while (!client.input.empty() && packetCount < packetsToUnpack) {
+        size_t offset = 0;
+        if (preamble.active) {
+            if (client.input.size() < preamble.characters.size())
+                break;
+            offset += preamble.characters.size();
+        }
+
+        uint32_t dataLength = 0;
+
+        if (packetLength.active) {
+            if (client.input.size() < offset + packetLength.length)
+                break;
+
+            if (endianness == ProtocolManager::Endianness::LITTLE) {
+                if (packetLength.length == 4) {
+                    dataLength = CAST_UINT32(client.input[offset]) |
+                               (CAST_UINT32(client.input[offset + 1]) << 8) |
+                               (CAST_UINT32(client.input[offset + 2]) << 16) |
+                               (CAST_UINT32(client.input[offset + 3]) << 24);
+                } else if (packetLength.length == 2) {
+                    dataLength = CAST_UINT32(client.input[offset]) |
+                               (CAST_UINT32(client.input[offset + 1]) << 8);
+                } else if (packetLength.length == 1) {
+                    dataLength = client.input[offset];
+                }
+            } else {
+                if (packetLength.length == 4) {
+                    dataLength = (CAST_UINT32(client.input[offset]) << 24) |
+                               (CAST_UINT32(client.input[offset + 1]) << 16) |
+                               (CAST_UINT32(client.input[offset + 2]) << 8) |
+                               CAST_UINT32(client.input[offset + 3]);
+                } else if (packetLength.length == 2) {
+                    dataLength = (CAST_UINT32(client.input[offset]) << 8) |
+                               CAST_UINT32(client.input[offset + 1]);
+                } else if (packetLength.length == 1) {
+                    dataLength = client.input[offset];
+                }
+            }
+
+            offset += packetLength.length;
+            uint32_t actualDataLength = dataLength;
+            if (datetime.active) {
+                if (dataLength < CAST_UINT32(datetime.length)) {
+                    break;
+                }
+                actualDataLength = dataLength - datetime.length;
+            }
+
+            if (datetime.active) {
+                if (client.input.size() < offset + datetime.length)
+                    break;
+                offset += datetime.length;
+            }
+
+            if (client.input.size() < offset + actualDataLength)
+                break;
+
+            std::vector<uint8_t> packetData(
+                    client.input.begin() + offset,
+                    client.input.begin() + offset + actualDataLength);
+
+            result.push_back(packetData);
+            packetCount++;
+            offset += actualDataLength;
+            if (packetEnd.active) {
+                if (client.input.size()
+                    < offset + packetEnd.characters.size()) {
+                    break;
+                }
+                offset += packetEnd.characters.size();
+            }
+
+            client.input.erase(client.input.begin(),
+                    client.input.begin() + offset);
+
+        } else if (packetEnd.active) {
+            if (datetime.active) {
+                if (client.input.size() < offset + datetime.length)
+                    break;
+                offset += datetime.length;
+            }
+
+            std::string endMarker = packetEnd.characters;
+            auto it = std::search(
+                    client.input.begin() + offset,
+                    client.input.end(),
+                    endMarker.begin(),
+                    endMarker.end());
+
+            if (it == client.input.end())
+                break;
+
+            size_t dataEnd = std::distance(client.input.begin(), it);
+            size_t dataStart = offset;
+            dataLength = dataEnd - dataStart;
+
+            std::vector<uint8_t> packetData(
+                    client.input.begin() + dataStart,
+                    client.input.begin() + dataEnd);
+
+            result.push_back(packetData);
+            packetCount++;
+
+            client.input.erase(client.input.begin(),
+                    client.input.begin() + dataEnd + endMarker.size());
+        } else {
+            throw BadData();
+        }
+    }
+
+    return result;
+}
+
+std::vector<std::vector<uint8_t>> Server::unpack(int src, int nbPackets) {
+    auto it = _tcp_clients.find(src);
+    if (it == _tcp_clients.end())
+        throw UnknownAddressOrFd();
+
+    ClientInfo& client = it->second;
+
+    return getDataFromBuffer(nbPackets, client);
+}
+
+std::vector<std::vector<uint8_t>> Server::unpack(
+        const Address& src, int nbPackets) {
+    auto it = _udp_clients.find(src);
+    if (it == _udp_clients.end())
+        throw UnknownAddressOrFd();
+
+    ClientInfo& client = it->second;
+
+    return getDataFromBuffer(nbPackets, client);
+}
+
+const std::unordered_map<Address, Server::ClientInfo>& Server::getUdpClients()
+    const {
+    return _udp_clients;
+}
+
+const std::unordered_map<int, Server::ClientInfo>& Server::getTcpClients()
+    const {
+    return _tcp_clients;
+}
+
+std::unordered_map<Address, Server::ClientInfo>& Server::getUdpClientsRef() {
+    return _udp_clients;
+}
+
+std::unordered_map<int, Server::ClientInfo>& Server::getTcpClientsRef() {
+    return _tcp_clients;
 }

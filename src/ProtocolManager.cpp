@@ -1,4 +1,3 @@
-#include "Network/ProtocolManager.hpp"
 #include <json/json.h>
 #include <fstream>
 #include <sstream>
@@ -9,6 +8,8 @@
 #include <stdexcept>
 #include <vector>
 #include <string>
+
+#include "Network/ProtocolManager.hpp"
 
 ProtocolManager::ProtocolManager(const std::string &path) {
     std::ifstream file(path, std::ifstream::binary);
@@ -99,8 +100,7 @@ uint64_t ProtocolManager::getCurrentTimestamp() const {
         std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
 }
 
-std::vector<uint8_t> ProtocolManager::formatPacket(const void *data,
-        size_t dataSize) {
+std::vector<uint8_t> ProtocolManager::formatPacket(std::vector<uint8_t> data) {
     std::vector<uint8_t> formattedPacket;
 
     if (_preambule.active) {
@@ -110,7 +110,7 @@ std::vector<uint8_t> ProtocolManager::formatPacket(const void *data,
                               preambleBytes + _preambule.characters.size());
     }
     if (_packet_length.active) {
-        uint32_t totalLength = static_cast<uint32_t>(dataSize);
+        uint32_t totalLength = static_cast<uint32_t>(data.size());
         if (_datetime.active) {
             totalLength += _datetime.length;
         }
@@ -120,9 +120,11 @@ std::vector<uint8_t> ProtocolManager::formatPacket(const void *data,
         uint64_t timestamp = getCurrentTimestamp();
         writeUint64(formattedPacket, timestamp, _datetime.length);
     }
-    const uint8_t* dataBytes = static_cast<const uint8_t*>(data);
+
+    const uint8_t* dataBytes = static_cast<const uint8_t*>(data.data());
     formattedPacket.insert(formattedPacket.end(), dataBytes, dataBytes
-        + dataSize);
+        + data.size());
+
     if (_end_of_packet.active) {
         const uint8_t* endBytes = reinterpret_cast<const uint8_t*>(
             _end_of_packet.characters.c_str());
@@ -133,6 +135,7 @@ std::vector<uint8_t> ProtocolManager::formatPacket(const void *data,
     return formattedPacket;
 }
 
+// faut le changer lui je crois :(
 ProtocolManager::UnformattedPacket ProtocolManager::unformatPacket(
     const std::vector<uint8_t> &formattedData) {
     UnformattedPacket result;
@@ -177,10 +180,19 @@ ProtocolManager::UnformattedPacket ProtocolManager::unformatPacket(
         offset += _datetime.length;
     }
 
-    size_t dataSize = formattedData.size() - offset;
-    if (_end_of_packet.active) {
-        dataSize -= _end_of_packet.characters.size();
+    size_t dataSize;
+    if (_packet_length.active && result.hasLength) {
+        dataSize = result.packetLength;
+        if (_datetime.active) {
+            dataSize -= _datetime.length;
+        }
+    } else {
+        dataSize = formattedData.size() - offset;
+        if (_end_of_packet.active) {
+            dataSize -= _end_of_packet.characters.size();
+        }
     }
+
     if (_end_of_packet.active) {
         if (formattedData.size() < offset + dataSize
             + _end_of_packet.characters.size()) {

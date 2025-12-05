@@ -1,7 +1,9 @@
 #pragma once
+
 #include <string>
 #include <vector>
 #include <cstdint>
+
 #include "Packet.hpp"
 
 class ProtocolManager {
@@ -43,7 +45,7 @@ class ProtocolManager {
     ~ProtocolManager() {}
 
     // Format a packet with protocol elements (preambule, length, datetime, end)
-    std::vector<uint8_t> formatPacket(const void *data, size_t dataSize);
+    std::vector<uint8_t> formatPacket(std::vector<uint8_t> data);
 
     // extract the raw data and informations from a formatted packet
     UnformattedPacket unformatPacket(const std::vector<uint8_t> &formattedData);
@@ -68,7 +70,10 @@ class ProtocolManager {
 
     // endianness conversion
     void writeUint32(std::vector<uint8_t>& buffer, uint32_t value) const;
-    void writeUint64(std::vector<uint8_t>& buffer, uint64_t value, int numBytes) const;
-    uint32_t readUint32(const std::vector<uint8_t>& buffer, size_t offset, int numBytes) const;
-    uint64_t readUint64(const std::vector<uint8_t>& buffer, size_t offset, int numBytes) const;
+    void writeUint64(std::vector<uint8_t>& buffer,
+        uint64_t value, int numBytes) const;
+    uint32_t readUint32(const std::vector<uint8_t>& buffer,
+        size_t offset, int numBytes) const;
+    uint64_t readUint64(const std::vector<uint8_t>& buffer,
+        size_t offset, int numBytes) const;
 };
