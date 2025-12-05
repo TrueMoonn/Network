@@ -1,3 +1,4 @@
 #Local Files
 build/
 *.a
+binaries
