@@ -9,6 +9,8 @@
 #include "Network/ProtocolManager.hpp"
 #include "Network/PacketSerializer.hpp"
 
+#define CAST_UINT32 static_cast<uint32_t>
+
 class Client {
  public:
     explicit Client(const std::string& protocol = "UDP");

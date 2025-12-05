@@ -166,7 +166,8 @@ int Server::tcpSend(int dest, std::vector<uint8_t> data) {
 
     size_t totalSent = 0;
     while (totalSent < fullPacket.size()) {
-        int sent = ::send(dest, fullPacket.data() + totalSent, fullPacket.size() - totalSent, 0);
+        int sent = ::send(dest, fullPacket.data()
+            + totalSent, fullPacket.size() - totalSent, 0);
         if (sent < 0)
             throw NetworkSocket::DataSendFailed();
         if (sent == 0)
@@ -324,25 +325,25 @@ std::vector<std::vector<uint8_t>> Server::getDataFromBuffer(
 
             if (endianness == ProtocolManager::Endianness::LITTLE) {
                 if (packetLength.length == 4) {
-                    dataLength = static_cast<uint32_t>(client.input[offset]) |
-                               (static_cast<uint32_t>(client.input[offset + 1]) << 8) |
-                               (static_cast<uint32_t>(client.input[offset + 2]) << 16) |
-                               (static_cast<uint32_t>(client.input[offset + 3]) << 24);
+                    dataLength = CAST_UINT32(client.input[offset]) |
+                               (CAST_UINT32(client.input[offset + 1]) << 8) |
+                               (CAST_UINT32(client.input[offset + 2]) << 16) |
+                               (CAST_UINT32(client.input[offset + 3]) << 24);
                 } else if (packetLength.length == 2) {
-                    dataLength = static_cast<uint32_t>(client.input[offset]) |
-                               (static_cast<uint32_t>(client.input[offset + 1]) << 8);
+                    dataLength = CAST_UINT32(client.input[offset]) |
+                               (CAST_UINT32(client.input[offset + 1]) << 8);
                 } else if (packetLength.length == 1) {
                     dataLength = client.input[offset];
                 }
             } else {
                 if (packetLength.length == 4) {
-                    dataLength = (static_cast<uint32_t>(client.input[offset]) << 24) |
-                               (static_cast<uint32_t>(client.input[offset + 1]) << 16) |
-                               (static_cast<uint32_t>(client.input[offset + 2]) << 8) |
-                               static_cast<uint32_t>(client.input[offset + 3]);
+                    dataLength = (CAST_UINT32(client.input[offset]) << 24) |
+                               (CAST_UINT32(client.input[offset + 1]) << 16) |
+                               (CAST_UINT32(client.input[offset + 2]) << 8) |
+                               CAST_UINT32(client.input[offset + 3]);
                 } else if (packetLength.length == 2) {
-                    dataLength = (static_cast<uint32_t>(client.input[offset]) << 8) |
-                               static_cast<uint32_t>(client.input[offset + 1]);
+                    dataLength = (CAST_UINT32(client.input[offset]) << 8) |
+                               CAST_UINT32(client.input[offset + 1]);
                 } else if (packetLength.length == 1) {
                     dataLength = client.input[offset];
                 }
@@ -351,7 +352,7 @@ std::vector<std::vector<uint8_t>> Server::getDataFromBuffer(
             offset += packetLength.length;
             uint32_t actualDataLength = dataLength;
             if (datetime.active) {
-                if (dataLength < static_cast<uint32_t>(datetime.length)) {
+                if (dataLength < CAST_UINT32(datetime.length)) {
                     break;
                 }
                 actualDataLength = dataLength - datetime.length;
@@ -374,7 +375,8 @@ std::vector<std::vector<uint8_t>> Server::getDataFromBuffer(
             packetCount++;
             offset += actualDataLength;
             if (packetEnd.active) {
-                if (client.input.size() < offset + packetEnd.characters.size()) {
+                if (client.input.size()
+                    < offset + packetEnd.characters.size()) {
                     break;
                 }
                 offset += packetEnd.characters.size();
@@ -442,11 +444,13 @@ std::vector<std::vector<uint8_t>> Server::unpack(
     return getDataFromBuffer(nbPackets, client);
 }
 
-const std::unordered_map<Address, Server::ClientInfo>& Server::getUdpClients() const {
+const std::unordered_map<Address, Server::ClientInfo>& Server::getUdpClients()
+    const {
     return _udp_clients;
 }
 
-const std::unordered_map<int, Server::ClientInfo>& Server::getTcpClients() const {
+const std::unordered_map<int, Server::ClientInfo>& Server::getTcpClients()
+    const {
     return _tcp_clients;
 }
 

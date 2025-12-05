@@ -12,6 +12,8 @@
 #include "Network/NetworkSocket.hpp"
 #include "Network/ProtocolManager.hpp"
 
+#define CAST_UINT32 static_cast<uint32_t>
+
 class Server {
  public:
     explicit Server(const std::string&, uint16_t, ProtocolManager);
@@ -122,7 +124,7 @@ class Server {
     std::vector<pollfd> _tcp_fds;
 
     std::unordered_map<int, Address> _tcp_links;
-    
+
     std::unordered_map<Address, ClientInfo> _udp_clients;
     std::unordered_map<int, ClientInfo> _tcp_clients;
 
