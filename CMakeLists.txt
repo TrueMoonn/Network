@@ -47,9 +47,3 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSONCPP REQUIRED jsoncpp)
 target_link_libraries(${PROJECT_NAME} ${JSONCPP_LIBRARIES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${JSONCPP_INCLUDE_DIRS})
-
-add_executable(server_main server_main.cpp)
-target_link_libraries(server_main ${PROJECT_NAME})
-
-add_executable(client_main client_main.cpp)
-target_link_libraries(client_main ${PROJECT_NAME})
