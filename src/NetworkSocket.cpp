@@ -199,7 +199,7 @@ int NetworkSocket::receiveFrom(
 
     if (recvd < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
-            return 0;
+            return -1;  // No data available in non-blocking mode
         perror("recvfrom");
         return -1;
     }

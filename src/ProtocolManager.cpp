@@ -160,24 +160,26 @@ ProtocolManager::UnformattedPacket ProtocolManager::unformatPacket(
     }
 
     if (_packet_length.active) {
-        if (formattedData.size() < offset + _packet_length.length) {
+        if (formattedData.size() < offset +
+            static_cast<size_t>(_packet_length.length)) {
             throw std::runtime_error(
                 "Packet too small to contain length field");
         }
         result.hasLength = true;
         result.packetLength =
             readUint32(formattedData, offset, _packet_length.length);
-        offset += _packet_length.length;
+        offset += static_cast<size_t>(_packet_length.length);
     }
 
     if (_datetime.active) {
-        if (formattedData.size() < offset + _datetime.length) {
+        if (formattedData.size() <
+            offset + static_cast<size_t>(_datetime.length)) {
             throw std::runtime_error(
                 "Packet too small to contain datetime field");
         }
         result.hasTimestamp = true;
         result.timestamp = readUint64(formattedData, offset, _datetime.length);
-        offset += _datetime.length;
+        offset += static_cast<size_t>(_datetime.length);
     }
 
     size_t dataSize;
@@ -277,13 +279,22 @@ void ProtocolManager::writeUint64(std::vector<uint8_t>& buffer,
 
 uint32_t ProtocolManager::readUint32(const std::vector<uint8_t>& buffer,
                                      size_t offset, int numBytes) const {
+    if (offset + static_cast<size_t>(numBytes) > buffer.size()) {
+        throw std::runtime_error("readUint32: buffer too small");
+    }
     uint32_t value = 0;
     if (_endianness == Endianness::BIG) {
         for (int i = 0; i < numBytes; ++i) {
+            if (offset + static_cast<size_t>(i) >= buffer.size()) {
+                throw std::runtime_error("readUint32: index out of bounds");
+            }
             value = (value << 8) | buffer[offset + i];
         }
     } else {
         for (int i = numBytes - 1; i >= 0; --i) {
+            if (offset + static_cast<size_t>(i) >= buffer.size()) {
+                throw std::runtime_error("readUint32: index out of bounds");
+            }
             value = (value << 8) | buffer[offset + i];
         }
     }
@@ -292,13 +303,22 @@ uint32_t ProtocolManager::readUint32(const std::vector<uint8_t>& buffer,
 
 uint64_t ProtocolManager::readUint64(const std::vector<uint8_t>& buffer,
                                      size_t offset, int numBytes) const {
+    if (offset + static_cast<size_t>(numBytes) > buffer.size()) {
+        throw std::runtime_error("readUint64: buffer too small");
+    }
     uint64_t value = 0;
     if (_endianness == Endianness::BIG) {
         for (int i = 0; i < numBytes; ++i) {
+            if (offset + static_cast<size_t>(i) >= buffer.size()) {
+                throw std::runtime_error("readUint64: index out of bounds");
+            }
             value = (value << 8) | buffer[offset + i];
         }
     } else {
         for (int i = numBytes - 1; i >= 0; --i) {
+            if (offset + static_cast<size_t>(i) >= buffer.size()) {
+                throw std::runtime_error("readUint64: index out of bounds");
+            }
             value = (value << 8) | buffer[offset + i];
         }
     }

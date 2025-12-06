@@ -214,9 +214,13 @@ std::vector<std::vector<uint8_t>> Client::receiveAll() {
             Address sender;
             int received =
                 _socket.receiveFrom(tempBuffer.data(), bufferSize, sender);
-            if (received <= 0) {
+            if (received < 0) {
                 break;
             }
+            if (received == 0) {
+                continue;
+            }
+
             if (!(sender == _server_address)) {
                 std::cerr <<
                     "Warning: Received UDP packet from unexpected source: "
