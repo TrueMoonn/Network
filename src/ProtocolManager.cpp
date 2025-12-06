@@ -160,7 +160,8 @@ ProtocolManager::UnformattedPacket ProtocolManager::unformatPacket(
     }
 
     if (_packet_length.active) {
-        if (formattedData.size() < offset + static_cast<size_t>(_packet_length.length)) {
+        if (formattedData.size() < offset +
+            static_cast<size_t>(_packet_length.length)) {
             throw std::runtime_error(
                 "Packet too small to contain length field");
         }
@@ -171,7 +172,8 @@ ProtocolManager::UnformattedPacket ProtocolManager::unformatPacket(
     }
 
     if (_datetime.active) {
-        if (formattedData.size() < offset + static_cast<size_t>(_datetime.length)) {
+        if (formattedData.size() <
+            offset + static_cast<size_t>(_datetime.length)) {
             throw std::runtime_error(
                 "Packet too small to contain datetime field");
         }
