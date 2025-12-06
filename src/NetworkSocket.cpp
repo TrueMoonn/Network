@@ -10,8 +10,8 @@
 #include <iostream>
 #include <climits>
 
-NetworkSocket::NetworkSocket()
-    : _socket(-1), _is_valid(false), _type(SocketType::UDP) {}
+NetworkSocket::NetworkSocket(SocketType socketType)
+    : _socket(-1), _is_valid(false), _type(socketType) {}
 
 NetworkSocket::~NetworkSocket() {
     if (_is_valid) {
@@ -199,7 +199,7 @@ int NetworkSocket::receiveFrom(
 
     if (recvd < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
-            return 0;
+            return -1;  // No data available in non-blocking mode
         perror("recvfrom");
         return -1;
     }
