@@ -118,7 +118,8 @@ int NetworkSocket::sendTo(
     }
 
     sockaddr_in addr = destination.toSockAddr();
-    int sent = ::sendto(_socket, static_cast<const char*>(data), static_cast<int>(size), 0,
+    int sent = ::sendto(_socket, static_cast<const char*>(data),
+                        static_cast<int>(size), 0,
                         reinterpret_cast<struct sockaddr*>(&addr),
                         static_cast<socklen_t>(sizeof(addr)));
     if (sent == SOCKET_ERROR_VALUE) {
@@ -160,9 +161,10 @@ int NetworkSocket::receiveFrom(
     int recvd;
     do {
         recvd = ::recvfrom(_socket, static_cast<char*>(buffer),
-                           static_cast<int>(buffer_size), 0,
-                           reinterpret_cast<struct sockaddr*>(&addr), &addrlen);
-    } while (recvd == SOCKET_ERROR_VALUE && IsInterruptError(GetLastSocketError()));
+                        static_cast<int>(buffer_size), 0,
+                        reinterpret_cast<struct sockaddr*>(&addr), &addrlen);
+    } while (recvd == SOCKET_ERROR_VALUE
+            && IsInterruptError(GetLastSocketError()));
 
     if (recvd == SOCKET_ERROR_VALUE) {
         int error = GetLastSocketError();
@@ -214,7 +216,8 @@ int NetworkSocket::accept(Address& client_addr) {
     sockaddr_in addr{};
     socklen_t addr_len = sizeof(addr);
 
-    SocketHandle client_fd = ::accept(_socket, (struct sockaddr*)&addr, &addr_len);
+    SocketHandle client_fd = ::accept(_socket, (struct sockaddr*)&addr,
+        &addr_len);
 
     if (client_fd == INVALID_SOCKET_VALUE) {
         PrintSocketError("accept failed");
@@ -240,7 +243,8 @@ bool NetworkSocket::connect(const Address& server_addr) {
 
     sockaddr_in addr = server_addr.toSockAddr();
 
-    if (::connect(_socket, (struct sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR_VALUE) {
+    if (::connect(_socket, (struct sockaddr*)&addr,
+        sizeof(addr)) == SOCKET_ERROR_VALUE) {
         PrintSocketError("connect failed");
         return false;
     }
@@ -267,7 +271,8 @@ int NetworkSocket::send(const void* data, size_t size) {
         return -1;
     }
 
-    int sent = ::send(_socket, static_cast<const char*>(data), static_cast<int>(size), 0);
+    int sent = ::send(_socket, static_cast<const char*>(data),
+                    static_cast<int>(size), 0);
 
     if (sent == SOCKET_ERROR_VALUE) {
         PrintSocketError("send");
@@ -298,8 +303,10 @@ int NetworkSocket::recv(void* buffer, size_t buffer_size) {
 
     int recvd;
     do {
-        recvd = ::recv(_socket, static_cast<char*>(buffer), static_cast<int>(buffer_size), 0);
-    } while (recvd == SOCKET_ERROR_VALUE && IsInterruptError(GetLastSocketError()));
+        recvd = ::recv(_socket, static_cast<char*>(buffer),
+                    static_cast<int>(buffer_size), 0);
+    } while (recvd == SOCKET_ERROR_VALUE
+        && IsInterruptError(GetLastSocketError()));
 
     if (recvd == SOCKET_ERROR_VALUE) {
         int error = GetLastSocketError();

@@ -266,9 +266,10 @@ std::vector<int> Server::tcpReceive(int timeout) {
     size_t bufsiz = BUFSIZ + _protocol.getProtocolOverhead();
     for (size_t i = 1; i < _tcp_fds.size(); i++) {
         int client_fd = static_cast<int>(_tcp_fds[i].fd);
-        
+
         // Check for errors or hangup (connection closed by peer)
-        if ((_tcp_fds[i].revents & POLL_ERR) || (_tcp_fds[i].revents & POLL_HUP)) {
+        if ((_tcp_fds[i].revents & POLL_ERR)
+            || (_tcp_fds[i].revents & POLL_HUP)) {
             CLOSE_SOCKET(client_fd);
             _tcp_fds.erase(_tcp_fds.begin() + i);
             _tcp_clients.erase(client_fd);
@@ -276,7 +277,7 @@ std::vector<int> Server::tcpReceive(int timeout) {
             i--;
             continue;
         }
-        
+
         if (!(_tcp_fds[i].revents & POLL_IN))
             continue;
 

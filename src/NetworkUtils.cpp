@@ -1,6 +1,3 @@
-#include "Network/NetworkUtils.hpp"
-#include "Network/NetworkPlatform.hpp"
-
 #include <chrono>
 #include <string>
 
@@ -12,6 +9,9 @@
 #include <ifaddrs.h>
 #include <unistd.h>
 #endif
+
+#include "Network/NetworkUtils.hpp"
+#include "Network/NetworkPlatform.hpp"
 
 uint16_t NetworkUtils::hostToNetwork16(uint16_t value) {
     return htons(value);
@@ -49,7 +49,8 @@ std::string NetworkUtils::getLocalIP() {
     EnsureWinsockInitialized();
 
     char hostname[256] = {0};
-    if (gethostname(hostname, static_cast<int>(sizeof(hostname))) == SOCKET_ERROR) {
+    if (gethostname(hostname, static_cast<int>(sizeof(hostname)))
+        == SOCKET_ERROR) {
         return "127.0.0.1";
     }
 
