@@ -11,33 +11,33 @@
     #ifndef WIN32_LEAN_AND_MEAN
         #define WIN32_LEAN_AND_MEAN
     #endif
-    
+
     #include <winsock2.h>
     #include <ws2tcpip.h>
     #include <windows.h>
-    
+
     // Link with Winsock library
     #pragma comment(lib, "ws2_32.lib")
-    
+
     // Type definitions for Windows
     typedef SOCKET SocketHandle;
     typedef int socklen_t;
-    
+
     // Constants
     #define INVALID_SOCKET_VALUE INVALID_SOCKET
     #define SOCKET_ERROR_VALUE SOCKET_ERROR
     #define CLOSE_SOCKET(s) closesocket(s)
-    
+
     // Error codes mapping
     #define WOULD_BLOCK WSAEWOULDBLOCK
     #define IN_PROGRESS WSAEINPROGRESS
     #define INTERRUPTED WSAEINTR
-    
+
     // Get last error
     inline int GetLastSocketError() {
         return WSAGetLastError();
     }
-    
+
     // Initialize Winsock
     class WinsockInitializer {
      public:
@@ -48,17 +48,17 @@
                 throw std::runtime_error("WSAStartup failed");
             }
         }
-        
+
         ~WinsockInitializer() {
             WSACleanup();
         }
     };
-    
+
     // Ensure Winsock is initialized
     inline void EnsureWinsockInitialized() {
         static WinsockInitializer initializer;
     }
-    
+
 #else
     // Unix-like systems (Linux, macOS, etc.)
     #include <sys/types.h>
@@ -68,30 +68,30 @@
     #include <unistd.h>
     #include <fcntl.h>
     #include <errno.h>
-    
+
     // Type definitions for Unix
     typedef int SocketHandle;
-    
+
     // Constants
     #define INVALID_SOCKET_VALUE -1
     #define SOCKET_ERROR_VALUE -1
     #define CLOSE_SOCKET(s) ::close(s)
-    
+
     // Error codes mapping
     #define WOULD_BLOCK EWOULDBLOCK
     #define IN_PROGRESS EINPROGRESS
     #define INTERRUPTED EINTR
-    
+
     // Get last error
     inline int GetLastSocketError() {
         return errno;
     }
-    
+
     // No initialization needed for Unix
     inline void EnsureWinsockInitialized() {
         // No-op on Unix
     }
-    
+
 #endif
 
 // Cross-platform functions
@@ -181,19 +181,19 @@ inline void PrintSocketError(const char* msg) {
     #define POLL_FD_TYPE SOCKET
     #define POLL_IN POLLRDNORM
     #define POLL_OUT POLLWRNORM
-    
+
     inline int PollSockets(WSAPOLLFD* fds, ULONG nfds, int timeout) {
         return WSAPoll(fds, nfds, timeout);
     }
 #else
     // Unix systems have poll natively
     #include <poll.h>
-    
+
     #define POLLFD pollfd
     #define POLL_FD_TYPE int
     #define POLL_IN POLLIN
     #define POLL_OUT POLLOUT
-    
+
     inline int PollSockets(pollfd* fds, nfds_t nfds, int timeout) {
         return poll(fds, nfds, timeout);
     }
