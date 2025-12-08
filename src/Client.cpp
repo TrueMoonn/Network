@@ -1,10 +1,10 @@
-#include "Network/Client.hpp"
-#include <poll.h>
 #include <iostream>
 #include <cstring>
 #include <string>
 #include <vector>
 #include <algorithm>
+#include "Network/Client.hpp"
+#include "Network/NetworkPlatform.hpp"
 
 Client::Client(const std::string& protocol)
     : _socket(),
@@ -205,12 +205,12 @@ void Client::udpReceive(int timeout, int maxInputs) {
         return;
     }
 
-    pollfd pfd;
+    POLLFD pfd;
     pfd.fd = _socket.getSocket();
-    pfd.events = POLLIN;
+    pfd.events = POLL_IN;
     pfd.revents = 0;
 
-    int poll_result = poll(&pfd, 1, timeout);
+    int poll_result = PollSockets(&pfd, 1, timeout);
     if (poll_result < 0) {
         std::cerr << "Poll error in udpReceive()" << std::endl;
         return;
@@ -252,12 +252,12 @@ void Client::tcpReceive(int timeout) {
         return;
     }
 
-    pollfd pfd;
+    POLLFD pfd;
     pfd.fd = _socket.getSocket();
-    pfd.events = POLLIN;
+    pfd.events = POLL_IN;
     pfd.revents = 0;
 
-    int poll_result = poll(&pfd, 1, timeout);
+    int poll_result = PollSockets(&pfd, 1, timeout);
     if (poll_result < 0) {
         std::cerr << "Poll error in tcpReceive()" << std::endl;
         return;
@@ -266,7 +266,7 @@ void Client::tcpReceive(int timeout) {
         return;
     }
 
-    if (!(pfd.revents & POLLIN)) {
+    if (!(pfd.revents & POLL_IN)) {
         return;
     }
 
