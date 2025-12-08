@@ -4,6 +4,8 @@
 #include "Network/Packet.hpp"
 #include "Network/PacketFactory.hpp"
 
+namespace net {
+
 template<typename T>
 std::vector<uint8_t> PacketSerializer::serialize(const T& packet) {
     std::vector<uint8_t> buffer(sizeof(T));
@@ -35,3 +37,5 @@ bool PacketSerializer::validate(const void* data, size_t size) {
     }
     return true;
 }
+
+}  // namespace net

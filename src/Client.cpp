@@ -1,9 +1,12 @@
-#include "Network/Client.hpp"
 #include <iostream>
 #include <cstring>
 #include <string>
 #include <vector>
 #include <algorithm>
+#include "Network/Client.hpp"
+#include "Network/NetworkPlatform.hpp"
+
+namespace net {
 
 Client::Client(const std::string& protocol)
     : _socket(),
@@ -197,73 +200,98 @@ bool Client::setTimeout(int milliseconds) {
     return _socket.setTimeout(milliseconds);
 }
 
-std::vector<std::vector<uint8_t>> Client::receiveAll() {
-    std::vector<std::vector<uint8_t>> result;
-
+void Client::udpReceive(int timeout, int maxInputs) {
     if (!_connected || !_socket.isValid()) {
         std::cerr << "Client is not connected or socket is invalid"
             << std::endl;
-        return result;
+        return;
     }
 
-    if (_socket.getType() == SocketType::UDP) {
-        size_t bufferSize = BUFSIZ + _protocol.getProtocolOverhead();
-        std::vector<uint8_t> tempBuffer(bufferSize);
+    POLLFD pfd;
+    pfd.fd = _socket.getSocket();
+    pfd.events = POLL_IN;
+    pfd.revents = 0;
 
-        while (true) {
-            Address sender;
-            int received =
-                _socket.receiveFrom(tempBuffer.data(), bufferSize, sender);
-            if (received < 0) {
-                break;
-            }
-            if (received == 0) {
-                continue;
-            }
-
-            if (!(sender == _server_address)) {
-                std::cerr <<
-                    "Warning: Received UDP packet from unexpected source: "
-                    << sender.getIP() << ":" << sender.getPort() << std::endl;
-                continue;
-            }
-
-            try {
-                tempBuffer.resize(received);
-                ProtocolManager::UnformattedPacket unformatted =
-                    _protocol.unformatPacket(tempBuffer);
-                result.push_back(unformatted.data);
-            } catch (const std::exception& e) {
-                std::cerr << "Failed to unformat UDP packet: "
-                    << e.what() << std::endl;
-            }
-        }
-    } else {
-        size_t bufferSize = BUFSIZ + _protocol.getProtocolOverhead();
-        std::vector<uint8_t> tempBuffer(bufferSize);
-
-        while (true) {
-            int received = _socket.recv(tempBuffer.data(), bufferSize);
-
-            if (received == 0) {
-                std::cerr << "Server closed connection" << std::endl;
-                _connected = false;
-                break;
-            }
-
-            if (received < 0) {
-                break;
-            }
-
-            _input_buffer.insert(_input_buffer.end(),
-                                tempBuffer.begin(),
-                                tempBuffer.begin() + received);
-        }
-
-        result = extractPacketsFromBuffer();
+    int poll_result = PollSockets(&pfd, 1, timeout);
+    if (poll_result < 0) {
+        std::cerr << "Poll error in udpReceive()" << std::endl;
+        return;
+    }
+    if (poll_result == 0) {
+        return;
     }
 
-    return result;
+    size_t bufferSize = BUFSIZ + _protocol.getProtocolOverhead();
+
+    for (int count = 0; count < maxInputs; count++) {
+        Address sender;
+        std::vector<uint8_t> tempBuffer(bufferSize);
+
+        int received =
+            _socket.receiveFrom(tempBuffer.data(), bufferSize, sender);
+        if (received <= 0) {
+            break;
+        }
+
+        if (!(sender == _server_address)) {
+            std::cerr <<
+                "Warning: Received UDP packet from unexpected source: "
+                << sender.getIP() << ":" << sender.getPort() << std::endl;
+            continue;
+        }
+
+        std::vector<uint8_t> packetData(tempBuffer.begin(),
+                                        tempBuffer.begin() + received);
+        _input_buffer.insert(_input_buffer.end(),
+                            packetData.begin(), packetData.end());
+    }
+}
+
+void Client::tcpReceive(int timeout) {
+    if (!_connected || !_socket.isValid()) {
+        std::cerr << "Client is not connected or socket is invalid"
+            << std::endl;
+        return;
+    }
+
+    POLLFD pfd;
+    pfd.fd = _socket.getSocket();
+    pfd.events = POLL_IN;
+    pfd.revents = 0;
+
+    int poll_result = PollSockets(&pfd, 1, timeout);
+    if (poll_result < 0) {
+        std::cerr << "Poll error in tcpReceive()" << std::endl;
+        return;
+    }
+    if (poll_result == 0) {
+        return;
+    }
+
+    if (!(pfd.revents & POLL_IN)) {
+        return;
+    }
+
+    size_t bufferSize = BUFSIZ + _protocol.getProtocolOverhead();
+    std::vector<uint8_t> tempBuffer(bufferSize);
+
+    while (true) {
+        int received = _socket.recv(tempBuffer.data(), bufferSize);
+
+        if (received == 0) {
+            std::cerr << "Server closed connection" << std::endl;
+            _connected = false;
+            break;
+        }
+
+        if (received < 0) {
+            break;
+        }
+
+        _input_buffer.insert(_input_buffer.end(),
+                            tempBuffer.begin(),
+                            tempBuffer.begin() + received);
+    }
 }
 
 std::vector<std::vector<uint8_t>> Client::extractPacketsFromBuffer() {
@@ -388,3 +416,5 @@ std::vector<std::vector<uint8_t>> Client::extractPacketsFromBuffer() {
 
     return result;
 }
+
+}  // namespace net

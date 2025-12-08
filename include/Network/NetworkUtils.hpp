@@ -1,10 +1,11 @@
 #pragma once
 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
+#include <cstdint>
 #include <string>
+
+#include "Network/NetworkPlatform.hpp"
+
+namespace net {
 
 class NetworkUtils {
  public:
@@ -18,3 +19,5 @@ class NetworkUtils {
     static bool isValidIPv4(const std::string& ip);
     static std::string getLocalIP();
 };
+
+}  // namespace net

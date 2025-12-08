@@ -1,9 +1,8 @@
 #pragma once
 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
+#include <cstdint>
+
+namespace net {
 
 enum class PacketType : uint8_t {
     INVALID = 0,
@@ -51,3 +50,5 @@ struct PlayerActionPacket {
 };
 
 #pragma pack(pop)  // Restore default alignment
+
+}  // namespace net

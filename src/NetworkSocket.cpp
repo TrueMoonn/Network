@@ -1,33 +1,33 @@
 #include "Network/NetworkSocket.hpp"
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <fcntl.h>
-
-#include <cerrno>
 #include <cstring>
 #include <cstdio>
 #include <iostream>
 #include <climits>
 
+namespace net {
+
 NetworkSocket::NetworkSocket(SocketType socketType)
-    : _socket(-1), _is_valid(false), _type(socketType) {}
+    : _socket(INVALID_SOCKET_VALUE), _is_valid(false), _type(socketType) {
+    EnsureWinsockInitialized();
+}
 
 NetworkSocket::~NetworkSocket() {
     if (_is_valid) {
-        ::close(_socket);
-        _socket = -1;
+        CLOSE_SOCKET(_socket);
+        _socket = INVALID_SOCKET_VALUE;
         _is_valid = false;
     }
 }
 
 bool NetworkSocket::create(SocketType type) {
+    EnsureWinsockInitialized();
     _type = type;
     int sock_type = (_type == SocketType::TCP) ? SOCK_STREAM : SOCK_DGRAM;
 
     _socket = ::socket(AF_INET, sock_type, 0);
-    if (_socket < 0) {
-        perror("socket");
+    if (_socket == INVALID_SOCKET_VALUE) {
+        PrintSocketError("socket");
         _is_valid = false;
         return false;
     }
@@ -49,8 +49,8 @@ bool NetworkSocket::bind(uint16_t port) {
 
     int res = ::bind(_socket, (struct sockaddr *)&address, sizeof(sockaddr_in));
 
-    if (res < 0) {
-        perror("bind failed");
+    if (res == SOCKET_ERROR_VALUE) {
+        PrintSocketError("bind failed");
         return false;
     }
     return true;
@@ -63,8 +63,8 @@ void NetworkSocket::close() {
         return;
     }
 
-    ::close(_socket);
-    _socket = -1;
+    CLOSE_SOCKET(_socket);
+    _socket = INVALID_SOCKET_VALUE;
     _is_valid = false;
 }
 
@@ -74,21 +74,7 @@ bool NetworkSocket::setNonBlocking(bool enabled) {
             << std::endl;
         return false;
     }
-    int flags = fcntl(_socket, F_GETFL, 0);
-    if (flags == -1) {
-        perror("fcntl(F_GETFL)");
-        return false;
-    }
-    if (enabled) {
-        flags |= O_NONBLOCK;
-    } else {
-        flags &= ~O_NONBLOCK;
-    }
-    if (fcntl(_socket, F_SETFL, flags) == -1) {
-        perror("fcntl(F_SETFL)");
-        return false;
-    }
-    return true;
+    return SetSocketNonBlocking(_socket, enabled);
 }
 
 bool NetworkSocket::setTimeout(int milliseconds) {
@@ -97,19 +83,7 @@ bool NetworkSocket::setTimeout(int milliseconds) {
                   << std::endl;
         return false;
     }
-    struct timeval tv{};
-    if (milliseconds > 0) {
-        tv.tv_sec = milliseconds / 1000;
-        tv.tv_usec = (milliseconds % 1000) * 1000;
-    } else {
-        tv.tv_sec = 0;
-        tv.tv_usec = 0;
-    }
-    if (setsockopt(_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == -1) {
-        perror("setsockopt(SO_RCVTIMEO)");
-        return false;
-    }
-    return true;
+    return SetSocketTimeout(_socket, milliseconds);
 }
 
 bool NetworkSocket::setReuseAddr(bool enabled) {
@@ -119,20 +93,14 @@ bool NetworkSocket::setReuseAddr(bool enabled) {
         return false;
     }
 
-    int opt = enabled ? 1 : 0;
-    if (setsockopt(_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-        perror("setsockopt(SO_REUSEADDR)");
-        return false;
-    }
-
-    return true;
+    return SetSocketReuseAddr(_socket, enabled);
 }
 
 bool NetworkSocket::isValid() const {
     return _is_valid;
 }
 
-int NetworkSocket::getSocket() const {
+SocketHandle NetworkSocket::getSocket() const {
     return _socket;
 }
 
@@ -152,14 +120,15 @@ int NetworkSocket::sendTo(
     }
 
     sockaddr_in addr = destination.toSockAddr();
-    ssize_t sent = ::sendto(_socket, data, size, 0,
-                            reinterpret_cast<struct sockaddr*>(&addr),
-                            static_cast<socklen_t>(sizeof(addr)));
-    if (sent < 0) {
-        perror("sendto");
+    int sent = ::sendto(_socket, static_cast<const char*>(data),
+                        static_cast<int>(size), 0,
+                        reinterpret_cast<struct sockaddr*>(&addr),
+                        static_cast<socklen_t>(sizeof(addr)));
+    if (sent == SOCKET_ERROR_VALUE) {
+        PrintSocketError("sendto");
         return -1;
     }
-    return static_cast<int>(sent);
+    return sent;
 }
 
 int NetworkSocket::receiveFrom(
@@ -191,28 +160,24 @@ int NetworkSocket::receiveFrom(
     sockaddr_in addr{};
     socklen_t addrlen = sizeof(addr);
 
-    ssize_t recvd;
+    int recvd;
     do {
-        recvd = ::recvfrom(_socket, buffer, buffer_size, 0,
-                           reinterpret_cast<struct sockaddr*>(&addr), &addrlen);
-    } while (recvd < 0 && errno == EINTR);
+        recvd = ::recvfrom(_socket, static_cast<char*>(buffer),
+                        static_cast<int>(buffer_size), 0,
+                        reinterpret_cast<struct sockaddr*>(&addr), &addrlen);
+    } while (recvd == SOCKET_ERROR_VALUE
+            && IsInterruptError(GetLastSocketError()));
 
-    if (recvd < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
+    if (recvd == SOCKET_ERROR_VALUE) {
+        int error = GetLastSocketError();
+        if (IsBlockingError(error))
             return -1;  // No data available in non-blocking mode
-        perror("recvfrom");
+        PrintSocketError("recvfrom");
         return -1;
-    }
-    if (recvd > INT_MAX) {
-        std::cerr << "receiveFrom: received "
-                  << recvd
-                  << " bytes (capping to INT_MAX)"
-                  << std::endl;
-        recvd = INT_MAX;
     }
 
     sender = Address::fromSockAddr(addr);
-    return static_cast<int>(recvd);
+    return recvd;
 }
 
 // TCP
@@ -229,8 +194,8 @@ bool NetworkSocket::listen(int maxqueue) {
         return false;
     }
 
-    if (::listen(_socket, maxqueue) < 0) {
-        perror("listen failed");
+    if (::listen(_socket, maxqueue) == SOCKET_ERROR_VALUE) {
+        PrintSocketError("listen failed");
         return false;
     }
 
@@ -253,15 +218,16 @@ int NetworkSocket::accept(Address& client_addr) {
     sockaddr_in addr{};
     socklen_t addr_len = sizeof(addr);
 
-    int client_fd = ::accept(_socket, (struct sockaddr*)&addr, &addr_len);
+    SocketHandle client_fd = ::accept(_socket, (struct sockaddr*)&addr,
+        &addr_len);
 
-    if (client_fd < 0) {
-        perror("accept failed");
-        return -1;
+    if (client_fd == INVALID_SOCKET_VALUE) {
+        PrintSocketError("accept failed");
+        return INVALID_SOCKET_VALUE;
     }
 
     client_addr = Address::fromSockAddr(addr);
-    return client_fd;
+    return static_cast<int>(client_fd);
 }
 
 bool NetworkSocket::connect(const Address& server_addr) {
@@ -279,8 +245,9 @@ bool NetworkSocket::connect(const Address& server_addr) {
 
     sockaddr_in addr = server_addr.toSockAddr();
 
-    if (::connect(_socket, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        perror("connect failed");
+    if (::connect(_socket, (struct sockaddr*)&addr,
+        sizeof(addr)) == SOCKET_ERROR_VALUE) {
+        PrintSocketError("connect failed");
         return false;
     }
 
@@ -306,14 +273,15 @@ int NetworkSocket::send(const void* data, size_t size) {
         return -1;
     }
 
-    ssize_t sent = ::send(_socket, data, size, 0);
+    int sent = ::send(_socket, static_cast<const char*>(data),
+                    static_cast<int>(size), 0);
 
-    if (sent < 0) {
-        perror("send");
+    if (sent == SOCKET_ERROR_VALUE) {
+        PrintSocketError("send");
         return -1;
     }
 
-    return static_cast<int>(sent);
+    return sent;
 }
 
 int NetworkSocket::recv(void* buffer, size_t buffer_size) {
@@ -335,26 +303,23 @@ int NetworkSocket::recv(void* buffer, size_t buffer_size) {
         return -1;
     }
 
-    ssize_t recvd;
+    int recvd;
     do {
-        recvd = ::recv(_socket, buffer, buffer_size, 0);
-    } while (recvd < 0 && errno == EINTR);
+        recvd = ::recv(_socket, static_cast<char*>(buffer),
+                    static_cast<int>(buffer_size), 0);
+    } while (recvd == SOCKET_ERROR_VALUE
+        && IsInterruptError(GetLastSocketError()));
 
-    if (recvd < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+    if (recvd == SOCKET_ERROR_VALUE) {
+        int error = GetLastSocketError();
+        if (IsBlockingError(error)) {
             return 0;
         }
-        perror("recv");
+        PrintSocketError("recv");
         return -1;
     }
 
-    if (recvd > INT_MAX) {
-        std::cerr << "recv: received "
-                  << recvd
-                  << " bytes (capping to INT_MAX)"
-                  << std::endl;
-        recvd = INT_MAX;
-    }
-
-    return static_cast<int>(recvd);
+    return recvd;
 }
+
+}  // namespace net

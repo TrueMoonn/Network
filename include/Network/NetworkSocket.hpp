@@ -4,7 +4,10 @@
 #include <cstdint>
 #include <string>
 
+#include "Network/NetworkPlatform.hpp"
 #include "Network/Address.hpp"
+
+namespace net {
 
 enum class SocketType {
     UDP,
@@ -25,7 +28,7 @@ class NetworkSocket {
     bool setReuseAddr(bool enabled);
 
     bool isValid() const;
-    int getSocket() const;
+    SocketHandle getSocket() const;
     SocketType getType() const { return _type; }
 
     // UDP
@@ -94,7 +97,9 @@ class NetworkSocket {
     };
 
  private:
-    int _socket;
+    SocketHandle _socket;
     bool _is_valid;
     SocketType _type;
 };
+
+}  // namespace net

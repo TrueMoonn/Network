@@ -6,6 +6,8 @@
 
 #include "Packet.hpp"
 
+namespace net {
+
 class ProtocolManager {
  public:
     enum class Endianness {
@@ -77,3 +79,5 @@ class ProtocolManager {
     uint64_t readUint64(const std::vector<uint8_t>& buffer,
         size_t offset, int numBytes) const;
 };
+
+}  // namespace net

@@ -11,6 +11,8 @@
 
 #define CAST_UINT32 static_cast<uint32_t>
 
+namespace net {
+
 class Client {
  public:
     explicit Client(const std::string& protocol = "UDP");
@@ -28,7 +30,9 @@ class Client {
     }
 
     int receive(void* buffer, size_t max_size);
-    std::vector<std::vector<uint8_t>> receiveAll();
+    void udpReceive(int timeout = 0, int maxInputs = 10);
+    void tcpReceive(int timeout = 0);
+    std::vector<std::vector<uint8_t>> extractPacketsFromBuffer();
 
     bool setNonBlocking(bool enabled);
     bool setTimeout(int milliseconds);
@@ -44,6 +48,6 @@ class Client {
     ProtocolManager _protocol;
 
     std::vector<uint8_t> _input_buffer;
-
-    std::vector<std::vector<uint8_t>> extractPacketsFromBuffer();
 };
+
+}  // namespace net

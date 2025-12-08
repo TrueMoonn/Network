@@ -3,6 +3,8 @@
 #include <vector>
 #include <cstdint>
 
+namespace net {
+
 class PacketSerializer {
  public:
     // Convert a struct to vec<uint8_t>
@@ -16,3 +18,5 @@ class PacketSerializer {
     // Check if a packet is valid
     static bool validate(const void* data, size_t size);
 };
+
+}  // namespace net

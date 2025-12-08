@@ -1,18 +1,20 @@
 #pragma once
 
-#include <poll.h>
-
+#include <cstdint>
 #include <string>
 #include <map>
 #include <unordered_map>
 #include <vector>
 
+#include "Network/NetworkPlatform.hpp"
 #include "Network/Address.hpp"
 #include "Network/Packet.hpp"
 #include "Network/NetworkSocket.hpp"
 #include "Network/ProtocolManager.hpp"
 
 #define CAST_UINT32 static_cast<uint32_t>
+
+namespace net {
 
 class Server {
  public:
@@ -42,10 +44,10 @@ class Server {
     uint16_t getPort() const { return _port; }
 
     // TCP
-    int acceptClient(Address& client_addr, uint currentTime);
+    int acceptClient(Address& client_addr, uint64_t currentTime);
 
     struct ClientInfo {
-        uint lastPacketTime;
+        uint64_t lastPacketTime;
         std::vector<uint8_t> input;
         std::vector<uint8_t> output;
     };
@@ -121,7 +123,7 @@ class Server {
 
     ProtocolManager _protocol;
 
-    std::vector<pollfd> _tcp_fds;
+    std::vector<POLLFD> _tcp_fds;
 
     std::unordered_map<int, Address> _tcp_links;
 
@@ -131,3 +133,5 @@ class Server {
     // // format [ IP:PORT, [01,02,03,04] ], ...
     // std::vector<std::pair<Address, std::vector<uint8_t> > > _clients;
 };
+
+}  // namespace net
