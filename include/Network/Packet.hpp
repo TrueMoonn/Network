@@ -1,9 +1,6 @@
 #pragma once
 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
+#include <cstdint>
 
 enum class PacketType : uint8_t {
     INVALID = 0,

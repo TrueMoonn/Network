@@ -12,6 +12,10 @@
         #define WIN32_LEAN_AND_MEAN
     #endif
 
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+
     #include <winsock2.h>
     #include <ws2tcpip.h>
     #include <windows.h>
@@ -181,6 +185,8 @@ inline void PrintSocketError(const char* msg) {
     #define POLL_FD_TYPE SOCKET
     #define POLL_IN POLLRDNORM
     #define POLL_OUT POLLWRNORM
+    #define POLL_ERR POLLERR
+    #define POLL_HUP POLLHUP
 
     inline int PollSockets(WSAPOLLFD* fds, ULONG nfds, int timeout) {
         return WSAPoll(fds, nfds, timeout);
@@ -193,6 +199,8 @@ inline void PrintSocketError(const char* msg) {
     #define POLL_FD_TYPE int
     #define POLL_IN POLLIN
     #define POLL_OUT POLLOUT
+    #define POLL_ERR POLLERR
+    #define POLL_HUP POLLHUP
 
     inline int PollSockets(pollfd* fds, nfds_t nfds, int timeout) {
         return poll(fds, nfds, timeout);

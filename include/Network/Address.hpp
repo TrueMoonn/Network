@@ -1,10 +1,9 @@
 #pragma once
 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
+#include <cstdint>
 #include <string>
+
+#include "Network/NetworkPlatform.hpp"
 
 class Address {
  public:
