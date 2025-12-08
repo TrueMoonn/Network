@@ -1,4 +1,3 @@
-#include <unistd.h>
 #include <iostream>
 #include <cstring>
 #include <cstdio>
@@ -33,9 +32,9 @@ Server::Server(
         throw NetworkSocket::SocketCreationError();
 
     if (type == SocketType::TCP) {
-        pollfd server_pfd;
+        POLLFD server_pfd;
         server_pfd.fd = _socket.getSocket();
-        server_pfd.events = POLLIN;
+        server_pfd.events = POLL_IN;
         server_pfd.revents = 0;
         _tcp_fds.push_back(server_pfd);
     }
@@ -80,7 +79,7 @@ bool Server::start() {
 
 void Server::stop() {
     for (size_t i = 1; i < _tcp_fds.size(); ++i) {
-        ::close(_tcp_fds[i].fd);
+        CLOSE_SOCKET(static_cast<SocketHandle>(_tcp_fds[i].fd));
     }
     _tcp_fds.clear();
     _udp_clients.clear();
@@ -91,7 +90,7 @@ void Server::stop() {
     _running = false;
 }
 
-int Server::acceptClient(Address& client_addr, uint currentTime) {
+int Server::acceptClient(Address& client_addr, uint64_t currentTime) {
     if (_socket.getType() != SocketType::TCP)
         throw NetworkSocket::InvalidSocketType(
             "acceptClient() is only for TCP mode");
@@ -112,9 +111,9 @@ int Server::acceptClient(Address& client_addr, uint currentTime) {
 
     _tcp_clients.insert(std::make_pair(client_fd, newClient));
 
-    pollfd client_pfd;
+    POLLFD client_pfd;
     client_pfd.fd = client_fd;
-    client_pfd.events = POLLIN;
+    client_pfd.events = POLL_IN;
     client_pfd.revents = 0;
     _tcp_fds.push_back(client_pfd);
 
@@ -166,15 +165,15 @@ int Server::tcpSend(int dest, std::vector<uint8_t> data) {
 
     size_t totalSent = 0;
     while (totalSent < fullPacket.size()) {
-        int sent = ::send(dest, fullPacket.data()
-            + totalSent, fullPacket.size() - totalSent, 0);
-        if (sent < 0)
+        int sent = ::send(dest, reinterpret_cast<const char*>(fullPacket.data()
+            + totalSent), static_cast<int>(fullPacket.size() - totalSent), 0);
+        if (sent == SOCKET_ERROR_VALUE)
             throw NetworkSocket::DataSendFailed();
         if (sent == 0)
             throw NetworkSocket::DataSendFailed();
         totalSent += sent;
     }
-    return totalSent;
+    return static_cast<int>(totalSent);
 }
 
 std::vector<Address> Server::udpReceive(int timeout, int maxInputs) {
@@ -187,12 +186,12 @@ std::vector<Address> Server::udpReceive(int timeout, int maxInputs) {
         throw NetworkSocket::InvalidSocketType(
             "Socket type is TCP, udpReceive() is for UDP only");
 
-    pollfd pfd;
+    POLLFD pfd;
     pfd.fd = _socket.getSocket();
-    pfd.events = POLLIN;
+    pfd.events = POLL_IN;
     pfd.revents = 0;
 
-    int poll_result = poll(&pfd, 1, timeout);
+    int poll_result = PollSockets(&pfd, 1, timeout);
     if (poll_result < 0)
         return results;
     if (poll_result == 0)
@@ -210,7 +209,7 @@ std::vector<Address> Server::udpReceive(int timeout, int maxInputs) {
 
         buffer.resize(received);
 
-        uint currentTime = static_cast<uint>(std::time(nullptr));
+        uint64_t currentTime = static_cast<uint64_t>(std::time(nullptr));
 
         auto it = _udp_clients.find(sender);
         if (it == _udp_clients.end()) {
@@ -247,32 +246,50 @@ std::vector<int> Server::tcpReceive(int timeout) {
     for (auto& pfd : _tcp_fds)
         pfd.revents = 0;
 
-    int poll_result = poll(_tcp_fds.data(), _tcp_fds.size(), timeout);
+#ifdef _WIN32
+    int poll_result = PollSockets(_tcp_fds.data(),
+                                  static_cast<ULONG>(_tcp_fds.size()), timeout);
+#else
+    int poll_result = PollSockets(_tcp_fds.data(), _tcp_fds.size(), timeout);
+#endif
     if (poll_result < 0)
         throw PollError();
     if (poll_result == 0)
         return results;
 
-    uint currentTime = static_cast<uint>(std::time(nullptr));
-    if (_tcp_fds[0].revents & POLLIN) {
+    uint64_t currentTime = static_cast<uint64_t>(std::time(nullptr));
+    if (_tcp_fds[0].revents & POLL_IN) {
         Address client_addr;
         int client_fd = acceptClient(client_addr, currentTime);
     }
 
     size_t bufsiz = BUFSIZ + _protocol.getProtocolOverhead();
     for (size_t i = 1; i < _tcp_fds.size(); i++) {
-        if (!(_tcp_fds[i].revents & POLLIN))
+        int client_fd = static_cast<int>(_tcp_fds[i].fd);
+
+        // Check for errors or hangup (connection closed by peer)
+        if ((_tcp_fds[i].revents & POLL_ERR)
+            || (_tcp_fds[i].revents & POLL_HUP)) {
+            CLOSE_SOCKET(client_fd);
+            _tcp_fds.erase(_tcp_fds.begin() + i);
+            _tcp_clients.erase(client_fd);
+            _tcp_links.erase(client_fd);
+            i--;
+            continue;
+        }
+
+        if (!(_tcp_fds[i].revents & POLL_IN))
             continue;
 
         size_t client_index = i - NB_SERVERFD;
 
-        int client_fd = _tcp_fds[i].fd;
         std::vector<uint8_t> buffer(bufsiz);
 
-        int received = ::recv(client_fd, buffer.data(), bufsiz, 0);
+        int received = ::recv(client_fd, reinterpret_cast<char*>(buffer.data()),
+                             static_cast<int>(bufsiz), 0);
 
         if (received == 0) {
-            ::close(client_fd);
+            CLOSE_SOCKET(client_fd);
             _tcp_fds.erase(_tcp_fds.begin() + i);
             _tcp_clients.erase(client_fd);
             _tcp_links.erase(client_fd);

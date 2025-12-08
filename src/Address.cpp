@@ -1,8 +1,13 @@
 #include "Network/Address.hpp"
 
-#include <arpa/inet.h>
 #include <iostream>
 #include <string>
+
+#ifdef _WIN32
+#include <ws2tcpip.h>
+#else
+#include <arpa/inet.h>
+#endif
 
 Address::Address() : _ip(0), _port(0) {}
 
