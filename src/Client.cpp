@@ -208,9 +208,10 @@ std::vector<std::vector<uint8_t>> Client::receiveAll() {
 
     if (_socket.getType() == SocketType::UDP) {
         size_t bufferSize = BUFSIZ + _protocol.getProtocolOverhead();
-        std::vector<uint8_t> tempBuffer(bufferSize);
+        size_t minPacketSize = _protocol.getProtocolOverhead();
 
         while (true) {
+            std::vector<uint8_t> tempBuffer(bufferSize, 0);
             Address sender;
             int received =
                 _socket.receiveFrom(tempBuffer.data(), bufferSize, sender);
@@ -218,6 +219,13 @@ std::vector<std::vector<uint8_t>> Client::receiveAll() {
                 break;
             }
             if (received == 0) {
+                continue;
+            }
+            if (static_cast<size_t>(received) < minPacketSize) {
+                std::cerr << "Warning: Received UDP packet too small ("
+                          << received << " bytes, minimum is "
+                          << minPacketSize << " bytes), discarding"
+                          << std::endl;
                 continue;
             }
 
@@ -234,8 +242,8 @@ std::vector<std::vector<uint8_t>> Client::receiveAll() {
                     _protocol.unformatPacket(tempBuffer);
                 result.push_back(unformatted.data);
             } catch (const std::exception& e) {
-                std::cerr << "Failed to unformat UDP packet: "
-                    << e.what() << std::endl;
+                std::cerr << "Failed to unformat UDP packet (" << received
+                          << " bytes): " << e.what() << std::endl;
             }
         }
     } else {

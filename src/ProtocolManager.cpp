@@ -201,9 +201,22 @@ ProtocolManager::UnformattedPacket ProtocolManager::unformatPacket(
             throw std::runtime_error("Packet too small to contain end marker");
         }
 
-        std::string receivedEnd(formattedData.end()
-            - _end_of_packet.characters.size(), formattedData.end());
+        size_t endMarkerPos = offset + dataSize;
+        std::string receivedEnd(formattedData.begin() + endMarkerPos,
+                               formattedData.begin() + endMarkerPos
+                               + _end_of_packet.characters.size());
         if (receivedEnd != _end_of_packet.characters) {
+            std::cerr << "Expected end marker: ";
+            for (size_t i = 0; i < _end_of_packet.characters.size(); i++) {
+                std::cerr << static_cast<int>(static_cast<uint8_t>(
+                    _end_of_packet.characters[i])) << " ";
+            }
+            std::cerr << ", but got: ";
+            for (size_t i = 0; i < receivedEnd.size(); i++) {
+                std::cerr << static_cast<int>(static_cast<uint8_t>(
+                    receivedEnd[i])) << " ";
+            }
+            std::cerr << std::endl;
             throw std::runtime_error("Invalid end marker in packet");
         }
     }
