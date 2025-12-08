@@ -1,12 +1,11 @@
 #pragma once
 
-#include <poll.h>
-
 #include <string>
 #include <map>
 #include <unordered_map>
 #include <vector>
 
+#include "Network/NetworkPlatform.hpp"
 #include "Network/Address.hpp"
 #include "Network/Packet.hpp"
 #include "Network/NetworkSocket.hpp"
@@ -121,7 +120,7 @@ class Server {
 
     ProtocolManager _protocol;
 
-    std::vector<pollfd> _tcp_fds;
+    std::vector<POLLFD> _tcp_fds;
 
     std::unordered_map<int, Address> _tcp_links;
 
