@@ -7,6 +7,8 @@
 #include "Network/NetworkPlatform.hpp"
 #include "Network/Address.hpp"
 
+namespace net {
+
 enum class SocketType {
     UDP,
     TCP
@@ -99,3 +101,5 @@ class NetworkSocket {
     bool _is_valid;
     SocketType _type;
 };
+
+}  // namespace net

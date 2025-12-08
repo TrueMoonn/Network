@@ -7,94 +7,93 @@
 // Platform detection and socket abstraction for cross-platform compatibility
 
 #ifdef _WIN32
-    // Windows
-    #ifndef WIN32_LEAN_AND_MEAN
-        #define WIN32_LEAN_AND_MEAN
-    #endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 
-    #ifndef NOMINMAX
-        #define NOMINMAX
-    #endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 
-    #include <winsock2.h>
-    #include <ws2tcpip.h>
-    #include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
 
-    // Link with Winsock library
-    #pragma comment(lib, "ws2_32.lib")
+// Link with Winsock library
+#pragma comment(lib, "ws2_32.lib")
 
-    // Type definitions for Windows
-    typedef SOCKET SocketHandle;
-    typedef int socklen_t;
+// Type definitions for Windows
+typedef SOCKET SocketHandle;
+typedef int socklen_t;
 
-    // Constants
-    #define INVALID_SOCKET_VALUE INVALID_SOCKET
-    #define SOCKET_ERROR_VALUE SOCKET_ERROR
-    #define CLOSE_SOCKET(s) closesocket(s)
+// Constants
+#define INVALID_SOCKET_VALUE INVALID_SOCKET
+#define SOCKET_ERROR_VALUE SOCKET_ERROR
+#define CLOSE_SOCKET(s) closesocket(s)
 
-    // Error codes mapping
-    #define WOULD_BLOCK WSAEWOULDBLOCK
-    #define IN_PROGRESS WSAEINPROGRESS
-    #define INTERRUPTED WSAEINTR
+// Error codes mapping
+#define WOULD_BLOCK WSAEWOULDBLOCK
+#define IN_PROGRESS WSAEINPROGRESS
+#define INTERRUPTED WSAEINTR
 
-    // Get last error
-    inline int GetLastSocketError() {
-        return WSAGetLastError();
+// Get last error
+inline int GetLastSocketError() {
+    return WSAGetLastError();
+}
+
+// Initialize Winsock
+class WinsockInitializer {
+ public:
+    WinsockInitializer() {
+        WSADATA wsaData;
+        int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
+        if (result != 0) {
+            throw std::runtime_error("WSAStartup failed");
+        }
     }
 
-    // Initialize Winsock
-    class WinsockInitializer {
-     public:
-        WinsockInitializer() {
-            WSADATA wsaData;
-            int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
-            if (result != 0) {
-                throw std::runtime_error("WSAStartup failed");
-            }
-        }
-
-        ~WinsockInitializer() {
-            WSACleanup();
-        }
-    };
-
-    // Ensure Winsock is initialized
-    inline void EnsureWinsockInitialized() {
-        static WinsockInitializer initializer;
+    ~WinsockInitializer() {
+        WSACleanup();
     }
+};
+
+// Ensure Winsock is initialized
+inline void EnsureWinsockInitialized() {
+    static WinsockInitializer initializer;
+}
 
 #else
-    // Unix-like systems (Linux, macOS, etc.)
-    #include <sys/types.h>
-    #include <sys/socket.h>
-    #include <netinet/in.h>
-    #include <arpa/inet.h>
-    #include <unistd.h>
-    #include <fcntl.h>
-    #include <errno.h>
+// Unix-like systems (Linux, macOS, etc.)
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
 
-    // Type definitions for Unix
-    typedef int SocketHandle;
+// Type definitions for Unix
+typedef int SocketHandle;
 
-    // Constants
-    #define INVALID_SOCKET_VALUE -1
-    #define SOCKET_ERROR_VALUE -1
-    #define CLOSE_SOCKET(s) ::close(s)
+// Constants
+#define INVALID_SOCKET_VALUE -1
+#define SOCKET_ERROR_VALUE -1
+#define CLOSE_SOCKET(s) ::close(s)
 
-    // Error codes mapping
-    #define WOULD_BLOCK EWOULDBLOCK
-    #define IN_PROGRESS EINPROGRESS
-    #define INTERRUPTED EINTR
+// Error codes mapping
+#define WOULD_BLOCK EWOULDBLOCK
+#define IN_PROGRESS EINPROGRESS
+#define INTERRUPTED EINTR
 
-    // Get last error
-    inline int GetLastSocketError() {
-        return errno;
-    }
+// Get last error
+inline int GetLastSocketError() {
+    return errno;
+}
 
-    // No initialization needed for Unix
-    inline void EnsureWinsockInitialized() {
-        // No-op on Unix
-    }
+// No initialization needed for Unix
+inline void EnsureWinsockInitialized() {
+    // No-op on Unix
+}
 
 #endif
 
@@ -180,29 +179,26 @@ inline void PrintSocketError(const char* msg) {
 
 // Poll abstraction - Windows uses WSAPoll, Unix uses poll
 #ifdef _WIN32
-    // Windows has WSAPoll which is compatible with poll
-    #define POLLFD WSAPOLLFD
-    #define POLL_FD_TYPE SOCKET
-    #define POLL_IN POLLRDNORM
-    #define POLL_OUT POLLWRNORM
-    #define POLL_ERR POLLERR
-    #define POLL_HUP POLLHUP
+#define POLLFD WSAPOLLFD
+#define POLL_FD_TYPE SOCKET
+#define POLL_IN POLLRDNORM
+#define POLL_OUT POLLWRNORM
+#define POLL_ERR POLLERR
+#define POLL_HUP POLLHUP
 
-    inline int PollSockets(WSAPOLLFD* fds, ULONG nfds, int timeout) {
-        return WSAPoll(fds, nfds, timeout);
-    }
+inline int PollSockets(WSAPOLLFD* fds, ULONG nfds, int timeout) {
+    return WSAPoll(fds, nfds, timeout);
+}
 #else
-    // Unix systems have poll natively
-    #include <poll.h>
+#include <poll.h>
+#define POLLFD pollfd
+#define POLL_FD_TYPE int
+#define POLL_IN POLLIN
+#define POLL_OUT POLLOUT
+#define POLL_ERR POLLERR
+#define POLL_HUP POLLHUP
 
-    #define POLLFD pollfd
-    #define POLL_FD_TYPE int
-    #define POLL_IN POLLIN
-    #define POLL_OUT POLLOUT
-    #define POLL_ERR POLLERR
-    #define POLL_HUP POLLHUP
-
-    inline int PollSockets(pollfd* fds, nfds_t nfds, int timeout) {
-        return poll(fds, nfds, timeout);
-    }
+inline int PollSockets(pollfd* fds, nfds_t nfds, int timeout) {
+    return poll(fds, nfds, timeout);
+}
 #endif

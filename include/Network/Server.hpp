@@ -14,6 +14,8 @@
 
 #define CAST_UINT32 static_cast<uint32_t>
 
+namespace net {
+
 class Server {
  public:
     explicit Server(const std::string&, uint16_t, ProtocolManager);
@@ -131,3 +133,5 @@ class Server {
     // // format [ IP:PORT, [01,02,03,04] ], ...
     // std::vector<std::pair<Address, std::vector<uint8_t> > > _clients;
 };
+
+}  // namespace net

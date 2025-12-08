@@ -12,6 +12,8 @@
 #include "Network/PacketSerializer.hpp"
 #include "Network/ProtocolManager.hpp"
 
+namespace net {
+
 Server::Server(
     const std::string& protocol,
     uint16_t port,
@@ -478,3 +480,5 @@ std::unordered_map<Address, Server::ClientInfo>& Server::getUdpClientsRef() {
 std::unordered_map<int, Server::ClientInfo>& Server::getTcpClientsRef() {
     return _tcp_clients;
 }
+
+}  // namespace net

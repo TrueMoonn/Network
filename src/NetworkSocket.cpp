@@ -5,6 +5,8 @@
 #include <iostream>
 #include <climits>
 
+namespace net {
+
 NetworkSocket::NetworkSocket(SocketType socketType)
     : _socket(INVALID_SOCKET_VALUE), _is_valid(false), _type(socketType) {
     EnsureWinsockInitialized();
@@ -319,3 +321,5 @@ int NetworkSocket::recv(void* buffer, size_t buffer_size) {
 
     return recvd;
 }
+
+}  // namespace net

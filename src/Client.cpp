@@ -6,6 +6,8 @@
 #include "Network/Client.hpp"
 #include "Network/NetworkPlatform.hpp"
 
+namespace net {
+
 Client::Client(const std::string& protocol)
     : _socket(),
     _server_address(),
@@ -414,3 +416,5 @@ std::vector<std::vector<uint8_t>> Client::extractPacketsFromBuffer() {
 
     return result;
 }
+
+}  // namespace net

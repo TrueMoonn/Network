@@ -2,6 +2,8 @@
 
 #include "Packet.hpp"
 
+namespace net {
+
 class PacketFactory {
  public:
     template<typename T>
@@ -13,3 +15,5 @@ class PacketFactory {
  private:
     static uint32_t _sequence_counter;
 };
+
+}  // namespace net

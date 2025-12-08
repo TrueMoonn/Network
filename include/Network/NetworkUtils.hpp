@@ -5,6 +5,8 @@
 
 #include "Network/NetworkPlatform.hpp"
 
+namespace net {
+
 class NetworkUtils {
  public:
     // Manage endianess
@@ -17,3 +19,5 @@ class NetworkUtils {
     static bool isValidIPv4(const std::string& ip);
     static std::string getLocalIP();
 };
+
+}  // namespace net

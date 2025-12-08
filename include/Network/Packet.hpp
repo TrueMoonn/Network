@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+namespace net {
+
 enum class PacketType : uint8_t {
     INVALID = 0,
     PLAYER_JOIN,        // Player ask to join
@@ -48,3 +50,5 @@ struct PlayerActionPacket {
 };
 
 #pragma pack(pop)  // Restore default alignment
+
+}  // namespace net

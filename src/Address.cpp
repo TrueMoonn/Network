@@ -9,6 +9,8 @@
 #include <arpa/inet.h>
 #endif
 
+namespace net {
+
 Address::Address() : _ip(0), _port(0) {}
 
 Address::Address(const std::string& ip, uint16_t port) {
@@ -74,5 +76,4 @@ uint32_t Address::getIPAsInt() const {
     return _ip;
 }
 
-
-
+}  // namespace net

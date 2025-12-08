@@ -11,6 +11,8 @@
 
 #include "Network/ProtocolManager.hpp"
 
+namespace net {
+
 ProtocolManager::ProtocolManager(const std::string &path) {
     std::ifstream file(path, std::ifstream::binary);
     Json::Value protocol;
@@ -337,3 +339,5 @@ uint64_t ProtocolManager::readUint64(const std::vector<uint8_t>& buffer,
     }
     return value;
 }
+
+}  // namespace net

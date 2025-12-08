@@ -2,6 +2,8 @@
 #include "Network/NetworkUtils.hpp"
 #include "Network/PacketFactory.hpp"
 
+namespace net {
+
 uint32_t PacketFactory::_sequence_counter = 0;
 
 template<typename T>
@@ -40,3 +42,5 @@ size_t PacketFactory::getPacketSize(PacketType type) {
             return 0;
     }
 }
+
+}  // namespace net

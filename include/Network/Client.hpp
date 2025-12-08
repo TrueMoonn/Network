@@ -11,6 +11,8 @@
 
 #define CAST_UINT32 static_cast<uint32_t>
 
+namespace net {
+
 class Client {
  public:
     explicit Client(const std::string& protocol = "UDP");
@@ -47,3 +49,5 @@ class Client {
 
     std::vector<uint8_t> _input_buffer;
 };
+
+}  // namespace net

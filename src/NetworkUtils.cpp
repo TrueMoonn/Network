@@ -13,6 +13,8 @@
 #include "Network/NetworkUtils.hpp"
 #include "Network/NetworkPlatform.hpp"
 
+namespace net {
+
 uint16_t NetworkUtils::hostToNetwork16(uint16_t value) {
     return htons(value);
 }
@@ -110,3 +112,5 @@ std::string NetworkUtils::getLocalIP() {
     return result;
 #endif
 }
+
+}  // namespace net

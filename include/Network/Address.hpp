@@ -5,6 +5,8 @@
 
 #include "Network/NetworkPlatform.hpp"
 
+namespace net {
+
 class Address {
  public:
     Address();
@@ -28,11 +30,13 @@ class Address {
     uint16_t _port;
 };
 
+}  // namespace net
+
 // needed to store Address in unordered_map
 namespace std {
 template<>
-struct hash<Address> {
-        size_t operator()(const Address& addr) const {
+struct hash<net::Address> {
+        size_t operator()(const net::Address& addr) const {
             size_t h1 = hash<uint32_t>()(addr.getIPAsInt());
             size_t h2 = hash<uint16_t>()(addr.getPort());
             return h1 ^ (h2 << 1);
