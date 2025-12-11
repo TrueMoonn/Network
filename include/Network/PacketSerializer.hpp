@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <cstdint>
+#include <cstring>
 
 namespace net {
 
@@ -9,11 +10,21 @@ class PacketSerializer {
  public:
     // Convert a struct to vec<uint8_t>
     template<typename T>
-    static std::vector<uint8_t> serialize(const T& packet);
+    static std::vector<uint8_t> serialize(const T& packet) {
+        std::vector<uint8_t> buffer(sizeof(T));
+        std::memcpy(buffer.data(), &packet, sizeof(T));
+        return buffer;
+    }
 
-    // Convert vec<uint8_t> to struct
     template<typename T>
-    static bool deserialize(const std::vector<uint8_t>& buffer, T& packet);
+    static bool deserialize(const std::vector<uint8_t>& buffer,
+        T& packet) {
+        if (buffer.size() < sizeof(T)) {
+            return false;
+        }
+        std::memcpy(&packet, buffer.data(), sizeof(T));
+        return true;
+    }
 
     // Check if a packet is valid
     static bool validate(const void* data, size_t size);

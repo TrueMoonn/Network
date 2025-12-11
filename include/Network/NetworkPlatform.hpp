@@ -181,10 +181,18 @@ inline void PrintSocketError(const char* msg) {
 #ifdef _WIN32
 #define POLLFD WSAPOLLFD
 #define POLL_FD_TYPE SOCKET
-#define POLL_IN POLLRDNORM
-#define POLL_OUT POLLWRNORM
-#define POLL_ERR POLLERR
-#define POLL_HUP POLLHUP
+#ifndef POLL_IN
+    #define POLL_IN POLLRDNORM
+#endif
+#ifndef POLL_OUT
+    #define POLL_OUT POLLWRNORM
+#endif
+#ifndef POLL_ERR
+    #define POLL_ERR POLLERR
+#endif
+#ifndef POLL_HUP
+    #define POLL_HUP POLLHUP
+#endif
 
 inline int PollSockets(WSAPOLLFD* fds, ULONG nfds, int timeout) {
     return WSAPoll(fds, nfds, timeout);
@@ -193,10 +201,18 @@ inline int PollSockets(WSAPOLLFD* fds, ULONG nfds, int timeout) {
 #include <poll.h>
 #define POLLFD pollfd
 #define POLL_FD_TYPE int
-#define POLL_IN POLLIN
-#define POLL_OUT POLLOUT
-#define POLL_ERR POLLERR
-#define POLL_HUP POLLHUP
+#ifndef POLL_IN
+    #define POLL_IN POLLIN
+#endif
+#ifndef POLL_OUT
+    #define POLL_OUT POLLOUT
+#endif
+#ifndef POLL_ERR
+    #define POLL_ERR POLLERR
+#endif
+#ifndef POLL_HUP
+    #define POLL_HUP POLLHUP
+#endif
 
 inline int PollSockets(pollfd* fds, nfds_t nfds, int timeout) {
     return poll(fds, nfds, timeout);
