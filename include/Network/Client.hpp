@@ -4,7 +4,6 @@
 #include <vector>
 
 #include "Network/Address.hpp"
-#include "Network/Packet.hpp"
 #include "Network/NetworkSocket.hpp"
 #include "Network/ProtocolManager.hpp"
 #include "Network/PacketSerializer.hpp"

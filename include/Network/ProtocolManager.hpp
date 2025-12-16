@@ -4,8 +4,6 @@
 #include <vector>
 #include <cstdint>
 
-#include "Packet.hpp"
-
 namespace net {
 
 /**

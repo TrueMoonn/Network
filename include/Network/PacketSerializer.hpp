@@ -39,15 +39,6 @@ class PacketSerializer {
         std::memcpy(&packet, buffer.data(), sizeof(T));
         return true;
     }
-
-    /**
-     * @brief Checks if a packet is valid
-     *
-     * @param data Pointer to the packet data
-     * @param size Size of the data in bytes
-     * @return true if the packet is valid, false otherwise
-     */
-    static bool validate(const void* data, size_t size);
 };
 
 }  // namespace net
