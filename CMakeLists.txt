@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR})
 set(NET_SRC_DIR "${PROJECT_SOURCE_DIR}/src")
 set(NET_HDR_DIR "${PROJECT_SOURCE_DIR}/include")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 ########## OPTIONS ##########
 option(ENABLE_NET_TESTS "Build tests along with the library" OFF)
