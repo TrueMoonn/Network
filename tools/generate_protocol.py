@@ -18,6 +18,7 @@ TYPE_MAP = {
 
 
 def load_protocol(json_path: str) -> dict:
+    """Open the file and validate if the json is well written"""
     try:
         file = open(json_path)
         content = file.read()
@@ -28,6 +29,7 @@ def load_protocol(json_path: str) -> dict:
 
 
 def is_valid_msg(msg: dict, list_id: list) -> bool:
+    """Check if a packet definition is valid"""
     if "id" not in msg or not isinstance(msg["id"], int):
         return False
 
@@ -58,6 +60,7 @@ def is_valid_msg(msg: dict, list_id: list) -> bool:
 
 
 def validate_protocol(protocol: dict):
+    """Check if the whole protocol is valid"""
     messages = protocol["messages"]
     if messages is None:
         print("Error: File doesn't contain 'messages' field")
@@ -71,7 +74,7 @@ def validate_protocol(protocol: dict):
 
 
 def generate_struct_declaration(msg_name: str, msg_data: dict) -> str:
-    """Génère la déclaration d'une structure"""
+    """Generate a struct from a packet definition"""
     output = ""
 
     output += f"struct {msg_name} {{\n"
@@ -96,6 +99,7 @@ def generate_struct_declaration(msg_name: str, msg_data: dict) -> str:
 
 
 def generate_header(protocol: dict) -> str:
+    """Generate a file with all structs definition"""
     output = ""
     output += "#pragma once\n"
     output += "#include <cstdint>\n"
@@ -112,6 +116,7 @@ def generate_header(protocol: dict) -> str:
 
 
 def generate_serialize_impl(msg_name: str, fields: list) -> str:
+    """Generate the serialize method of a struct"""
     output = ""
     output += f"std::vector<uint8_t> {msg_name}::serialize() const {{\n"
     output += "    std::vector<uint8_t> buffer;\n\n"
@@ -207,6 +212,8 @@ def generate_serialize_impl(msg_name: str, fields: list) -> str:
 
 
 def generate_source(protocol: dict) -> str:
+    """Generate the complete .cpp file containing all definitions of"""
+    """ serialize and deserialize methods of protocol struct"""
     output = ""
     output += '#include "Network/generated_messages.hpp"\n\n'
     output += "namespace net {\n\n"
@@ -220,6 +227,7 @@ def generate_source(protocol: dict) -> str:
 
 
 def generate_deserialize_impl(msg_name: str, fields: list) -> str:
+    """Generate the deserialize method of a struct"""
     output = ""
 
     output += (
