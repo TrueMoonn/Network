@@ -73,6 +73,20 @@ def validate_protocol(protocol: dict):
         list_id.append(msg_data["id"])
 
 
+def get_endianness(protocol: dict) -> str:
+    """Extract and validate endianness from protocol"""
+    if "endianness" not in protocol:
+        print("Warning: 'endianness' not specified, defaulting to 'big'")
+        return "big"
+
+    endianness = protocol["endianness"].lower()
+    if endianness not in ["big", "little"]:
+        print(f"Error: Invalid endianness '{endianness}'. Must be 'big' or 'little'")
+        sys.exit(1)
+
+    return endianness
+
+
 def generate_struct_declaration(msg_name: str, msg_data: dict) -> str:
     """Generate a struct from a packet definition"""
     output = ""
@@ -115,17 +129,55 @@ def generate_header(protocol: dict) -> str:
     return output
 
 
-def generate_serialize_impl(msg_name: str, fields: list) -> str:
+def write_uint_bytes(field_name: str, num_bytes: int, endianness: str) -> str:
+    """Generate code to write unsigned integer in specified endianness"""
+    output = ""
+
+    if endianness == "big":
+        for i in range(num_bytes - 1, -1, -1):
+            output += f"    buffer.push_back(({field_name} >> {i * 8}) & 0xFF);\n"
+    else:
+        for i in range(num_bytes):
+            output += f"    buffer.push_back(({field_name} >> {i * 8}) & 0xFF);\n"
+
+    return output
+
+
+def read_uint_bytes(
+    field_name: str, num_bytes: int, type_name: str, endianness: str
+) -> str:
+    """Generate code to read unsigned integer in specified endianness"""
+    output = ""
+    if endianness == "big":
+        output += f"    msg.{field_name} = "
+        for i in range(num_bytes):
+            if i > 0:
+                output += " |\n        "
+            shift = (num_bytes - 1 - i) * 8
+            output += f"(static_cast<{type_name}>(data[offset + {i}]) << {shift})"
+        output += ";\n"
+    else:
+        output += f"    msg.{field_name} = "
+        for i in range(num_bytes):
+            if i > 0:
+                output += " |\n        "
+            shift = i * 8
+            output += f"(static_cast<{type_name}>(data[offset + {i}]) << {shift})"
+        output += ";\n"
+
+    output += f"    offset += {num_bytes};\n"
+    return output
+
+
+def generate_serialize_impl(msg_name: str, fields: list, endianness: str) -> str:
     """Generate the serialize method of a struct"""
     output = ""
     output += f"std::vector<uint8_t> {msg_name}::serialize() const {{\n"
     output += "    std::vector<uint8_t> buffer;\n\n"
 
     output += "    // Write message ID\n"
-    output += "    buffer.push_back((ID >> 24) & 0xFF);\n"
-    output += "    buffer.push_back((ID >> 16) & 0xFF);\n"
-    output += "    buffer.push_back((ID >> 8) & 0xFF);\n"
-    output += "    buffer.push_back(ID & 0xFF);\n\n"
+    output += write_uint_bytes("ID", 4, endianness)
+    output += "\n"
 
     for field in fields:
         field_name = field["name"]
@@ -139,69 +191,34 @@ def generate_serialize_impl(msg_name: str, fields: list) -> str:
             output += f"        buffer.push_back({field_name}[i]);\n"
             output += "    }\n"
 
-        elif field_type == "uint8":
+        elif field_type in ["uint8", "int8"]:
             output += f"    buffer.push_back({field_name});\n"
 
-        elif field_type == "uint16":
-            output += f"    buffer.push_back(({field_name} >> 8) & 0xFF);\n"
-            output += f"    buffer.push_back({field_name} & 0xFF);\n"
+        elif field_type in ["uint16", "int16"]:
+            output += write_uint_bytes(field_name, 2, endianness)
 
-        elif field_type == "uint32":
-            output += f"    buffer.push_back(({field_name} >> 24) & 0xFF);\n"
-            output += f"    buffer.push_back(({field_name} >> 16) & 0xFF);\n"
-            output += f"    buffer.push_back(({field_name} >> 8) & 0xFF);\n"
-            output += f"    buffer.push_back({field_name} & 0xFF);\n"
-        elif field_type == "uint64":
-            output += f"    buffer.push_back(({field_name} >> 56) & 0xFF);\n"
-            output += f"    buffer.push_back(({field_name} >> 48) & 0xFF);\n"
-            output += f"    buffer.push_back(({field_name} >> 40) & 0xFF);\n"
-            output += f"    buffer.push_back(({field_name} >> 32) & 0xFF);\n"
-            output += f"    buffer.push_back(({field_name} >> 24) & 0xFF);\n"
-            output += f"    buffer.push_back(({field_name} >> 16) & 0xFF);\n"
-            output += f"    buffer.push_back(({field_name} >> 8) & 0xFF);\n"
-            output += f"    buffer.push_back({field_name} & 0xFF);\n"
-        elif field_type == "int8":
-            output += f"    buffer.push_back({field_name});\n"
+        elif field_type in ["uint32", "int32"]:
+            output += write_uint_bytes(field_name, 4, endianness)
 
-        elif field_type == "int16":
-            output += f"    buffer.push_back(({field_name} >> 8) & 0xFF);\n"
-            output += f"    buffer.push_back({field_name} & 0xFF);\n"
+        elif field_type in ["uint64", "int64"]:
+            output += write_uint_bytes(field_name, 8, endianness)
 
-        elif field_type == "int32":
-            output += f"    buffer.push_back(({field_name} >> 24) & 0xFF);\n"
-            output += f"    buffer.push_back(({field_name} >> 16) & 0xFF);\n"
-            output += f"    buffer.push_back(({field_name} >> 8) & 0xFF);\n"
-            output += f"    buffer.push_back({field_name} & 0xFF);\n"
-        elif field_type == "int64":
-            output += f"    buffer.push_back(({field_name} >> 56) & 0xFF);\n"
-            output += f"    buffer.push_back(({field_name} >> 48) & 0xFF);\n"
-            output += f"    buffer.push_back(({field_name} >> 40) & 0xFF);\n"
-            output += f"    buffer.push_back(({field_name} >> 32) & 0xFF);\n"
-            output += f"    buffer.push_back(({field_name} >> 24) & 0xFF);\n"
-            output += f"    buffer.push_back(({field_name} >> 16) & 0xFF);\n"
-            output += f"    buffer.push_back(({field_name} >> 8) & 0xFF);\n"
-            output += f"    buffer.push_back({field_name} & 0xFF);\n"
         elif field_type == "float":
-            output += "    {{\n"
+            output += "    {\n"
             output += "        uint32_t temp;\n"
             output += f"        std::memcpy(&temp, &{field_name}, sizeof(float));\n"
-            output += "        buffer.push_back((temp >> 24) & 0xFF);\n"
-            output += "        buffer.push_back((temp >> 16) & 0xFF);\n"
-            output += "        buffer.push_back((temp >> 8) & 0xFF);\n"
-            output += "        buffer.push_back(temp & 0xFF);\n"
-            output += "    }}\n"
+            output += write_uint_bytes("temp", 4, endianness).replace(
+                "    ", "        "
+            )
+            output += "    }\n"
+
         elif field_type == "double":
             output += "    {\n"
             output += "        uint64_t temp;\n"
             output += f"        std::memcpy(&temp, &{field_name}, sizeof(double));\n"
-            output += "        buffer.push_back((temp >> 56) & 0xFF);\n"
-            output += "        buffer.push_back((temp >> 48) & 0xFF);\n"
-            output += "        buffer.push_back((temp >> 40) & 0xFF);\n"
-            output += "        buffer.push_back((temp >> 32) & 0xFF);\n"
-            output += "        buffer.push_back((temp >> 24) & 0xFF);\n"
-            output += "        buffer.push_back((temp >> 16) & 0xFF);\n"
-            output += "        buffer.push_back((temp >> 8) & 0xFF);\n"
-            output += "        buffer.push_back(temp & 0xFF);\n"
+            output += write_uint_bytes("temp", 8, endianness).replace(
+                "    ", "        "
+            )
             output += "    }\n"
 
         output += "\n"
@@ -211,22 +228,7 @@ def generate_serialize_impl(msg_name: str, fields: list) -> str:
     return output
 
 
-def generate_source(protocol: dict) -> str:
-    """Generate the complete .cpp file containing all definitions of"""
-    """ serialize and deserialize methods of protocol struct"""
-    output = ""
-    output += '#include "Network/generated_messages.hpp"\n\n'
-    output += "namespace net {\n\n"
-
-    for msg_name, msg_data in protocol["messages"].items():
-        output += generate_serialize_impl(msg_name, msg_data["fields"])
-        output += generate_deserialize_impl(msg_name, msg_data["fields"])
-    output += "}  // namespace net\n"
-
-    return output
-
-
-def generate_deserialize_impl(msg_name: str, fields: list) -> str:
+def generate_deserialize_impl(msg_name: str, fields: list, endianness: str) -> str:
     """Generate the deserialize method of a struct"""
     output = ""
 
@@ -251,82 +253,71 @@ def generate_deserialize_impl(msg_name: str, fields: list) -> str:
                 f"    std::memcpy(msg.{field_name}, data.data() + offset, {max_len});\n"
             )
             output += f"    offset += {max_len};\n"
-        elif field_type == "uint8":
+
+        elif field_type in ["uint8", "int8"]:
             output += f"    msg.{field_name} = data[offset];\n"
             output += "    offset += 1;\n"
+
         elif field_type == "uint16":
-            output += f"    msg.{field_name} = (static_cast<uint16_t>(data[offset]) << 8) | data[offset + 1];\n"
-            output += "    offset += 2;\n"
-        elif field_type == "uint32":
-            output += f"    msg.{field_name} = (static_cast<uint32_t>(data[offset]) << 24) |\n"
-            output += "        (static_cast<uint32_t>(data[offset + 1]) << 16) |\n"
-            output += "        (static_cast<uint32_t>(data[offset + 2]) << 8) |\n"
-            output += "        static_cast<uint32_t>(data[offset + 3]);\n"
-            output += "    offset += 4;\n"
-        elif field_type == "uint64":
-            output += f"    msg.{field_name} = (static_cast<uint64_t>(data[offset]) << 56) |\n"
-            output += "        (static_cast<uint64_t>(data[offset + 1]) << 48) |\n"
-            output += "        (static_cast<uint64_t>(data[offset + 2]) << 40) |\n"  # ← | pas ;
-            output += "        (static_cast<uint64_t>(data[offset + 3]) << 32) |\n"
-            output += "        (static_cast<uint64_t>(data[offset + 4]) << 24) |\n"
-            output += "        (static_cast<uint64_t>(data[offset + 5]) << 16) |\n"
-            output += "        (static_cast<uint64_t>(data[offset + 6]) << 8) |\n"
-            output += "        static_cast<uint64_t>(data[offset + 7]);\n"
-            output += "    offset += 8;\n"
-        elif field_type == "int8":
-            output += f"    msg.{field_name} = data[offset];\n"
-            output += "    offset += 1;\n"
+            output += read_uint_bytes(field_name, 2, "uint16_t", endianness)
+
         elif field_type == "int16":
-            output += f"    msg.{field_name} = (static_cast<int16_t>(data[offset]) << 8) | data[offset + 1];\n"
-            output += "    offset += 2;\n"
+            output += read_uint_bytes(field_name, 2, "int16_t", endianness)
+
+        elif field_type == "uint32":
+            output += read_uint_bytes(field_name, 4, "uint32_t", endianness)
+
         elif field_type == "int32":
-            output += (
-                f"    msg.{field_name} = (static_cast<int32_t>(data[offset]) << 24) |\n"
-            )
-            output += "        (static_cast<int32_t>(data[offset + 1]) << 16) |\n"
-            output += "        (static_cast<int32_t>(data[offset + 2]) << 8) |\n"
-            output += "        static_cast<int32_t>(data[offset + 3]);\n"
-            output += "    offset += 4;\n"
+            output += read_uint_bytes(field_name, 4, "int32_t", endianness)
+
+        elif field_type == "uint64":
+            output += read_uint_bytes(field_name, 8, "uint64_t", endianness)
+
         elif field_type == "int64":
-            output += (
-                f"    msg.{field_name} = (static_cast<int64_t>(data[offset]) << 56) |\n"
-            )
-            output += "        (static_cast<int64_t>(data[offset + 1]) << 48) |\n"
-            output += "        (static_cast<int64_t>(data[offset + 2]) << 40) |\n"  # ← | pas ;
-            output += "        (static_cast<int64_t>(data[offset + 3]) << 32) |\n"
-            output += "        (static_cast<int64_t>(data[offset + 4]) << 24) |\n"
-            output += "        (static_cast<int64_t>(data[offset + 5]) << 16) |\n"
-            output += "        (static_cast<int64_t>(data[offset + 6]) << 8) |\n"
-            output += "        static_cast<int64_t>(data[offset + 7]);\n"
-            output += "    offset += 8;\n"
+            output += read_uint_bytes(field_name, 8, "int64_t", endianness)
+
         elif field_type == "float":
-            output += (
-                "    uint32_t temp = (static_cast<uint32_t>(data[offset]) << 24) |\n"
+            output += "    {\n"
+            output += "        uint32_t temp;\n"
+            temp_read = read_uint_bytes("temp", 4, "uint32_t", endianness).replace(
+                "msg.", ""
             )
-            output += "        (static_cast<uint32_t>(data[offset + 1]) << 16) |\n"
-            output += "        (static_cast<uint32_t>(data[offset + 2]) << 8) |\n"
-            output += "        static_cast<uint32_t>(data[offset + 3]);\n"
-            output += f"    std::memcpy(&msg.{field_name}, &temp, sizeof(float));\n"
-            output += "    offset += 4;\n"
+            output += "    " + temp_read.replace("\n", "\n    ")
+            output += f"        std::memcpy(&msg.{field_name}, &temp, sizeof(float));\n"
+            output += "    }\n"
+
         elif field_type == "double":
-            output += (
-                "    uint64_t temp = (static_cast<uint64_t>(data[offset]) << 56) |\n"
+            output += "    {\n"
+            output += "        uint64_t temp;\n"
+            temp_read = read_uint_bytes("temp", 8, "uint64_t", endianness).replace(
+                "msg.", ""
             )
-            output += "        (static_cast<uint64_t>(data[offset + 1]) << 48) |\n"
-            output += "        (static_cast<uint64_t>(data[offset + 2]) << 40) |\n"
-            output += "        (static_cast<uint64_t>(data[offset + 3]) << 32) |\n"
-            output += "        (static_cast<uint64_t>(data[offset + 4]) << 24) |\n"
-            output += "        (static_cast<uint64_t>(data[offset + 5]) << 16) |\n"
-            output += "        (static_cast<uint64_t>(data[offset + 6]) << 8) |\n"
-            output += "        static_cast<uint64_t>(data[offset + 7]);\n"
-            output += f"    std::memcpy(&msg.{field_name}, &temp, sizeof(double));\n"
-            output += "    offset += 8;\n"
+            output += "    " + temp_read.replace("\n", "\n    ")
+            output += (
+                f"        std::memcpy(&msg.{field_name}, &temp, sizeof(double));\n"
+            )
+            output += "    }\n"
 
         output += "\n"
 
     output += "    return msg;\n"
     output += "}\n\n"
 
+    return output
+
+
+def generate_source(protocol: dict, endianness: str) -> str:
+    """Generate the complete .cpp file containing all definitions of"""
+    """ serialize and deserialize methods of protocol struct"""
+    output = ""
+    output += '#include "Network/generated_messages.hpp"\n\n'
+    output += "namespace net {\n\n"
+
+    for msg_name, msg_data in protocol["messages"].items():
+        output += generate_serialize_impl(msg_name, msg_data["fields"], endianness)
+        output += generate_deserialize_impl(msg_name, msg_data["fields"], endianness)
+
+    output += "}  // namespace net\n"
     return output
 
 
@@ -343,10 +334,11 @@ def main():
 
     protocol = load_protocol(sys.argv[1])
     validate_protocol(protocol)
+    endianness = get_endianness(protocol)
 
     header = generate_header(protocol)
     write_file("include/Network/generated_messages.hpp", header)
-    source = generate_source(protocol)
+    source = generate_source(protocol, endianness)
     write_file("src/generated_messages.cpp", source)
 
 
