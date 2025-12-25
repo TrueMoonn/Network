@@ -28,7 +28,7 @@ def load_protocol(json_path: str) -> dict:
         sys.exit(1)
 
 
-def is_valid_msg(msg: dict, list_id: list) -> bool:
+def is_valid_msg(msg: dict, list_id: list, structs: dict) -> bool:
     """Check if a packet definition is valid"""
     if "id" not in msg or not isinstance(msg["id"], int):
         return False
@@ -46,31 +46,127 @@ def is_valid_msg(msg: dict, list_id: list) -> bool:
         if "type" not in field or not isinstance(field["type"], str):
             return False
 
-        if field["type"] not in TYPE_MAP and field["type"] != "string":
-            return False
+        field_type = field["type"]
 
-        if field["type"] == "string":
+        if field_type in TYPE_MAP:
+            continue
+
+        if field_type == "string":
             if (
                 "max_length" not in field
                 or not isinstance(field["max_length"], int)
                 or field["max_length"] <= 0
             ):
                 return False
+            continue
+
+        if field_type == "fixed_array":
+            if "element_type" not in field or "max_size" not in field:
+                print(
+                    f"Error: fixed_array field '{field['name']}' missing 'element_type' or 'max_size'"
+                )
+                return False
+
+            element_type = field["element_type"]
+
+            if (
+                element_type not in TYPE_MAP
+                and element_type not in structs
+                and element_type != "string"
+            ):
+                print(
+                    f"Error: Unknown element_type '{element_type}' in fixed_array '{field['name']}'"
+                )
+                return False
+
+            if not isinstance(field["max_size"], int) or field["max_size"] <= 0:
+                print(f"Error: Invalid max_size for fixed_array '{field['name']}'")
+                return False
+
+            continue
+
+        if field_type == "dynamic_array":
+            if "element_type" not in field:
+                print(
+                    f"Error: dynamic_array field '{field['name']}' missing 'element_type'"
+                )
+                return False
+
+            element_type = field["element_type"]
+
+            if (
+                element_type not in TYPE_MAP
+                and element_type not in structs
+                and element_type != "string"
+            ):
+                print(
+                    f"Error: Unknown element_type '{element_type}' in dynamic_array '{field['name']}'"
+                )
+                return False
+
+            continue
+
+        print(f"Error: Unknown type '{field_type}' for field '{field['name']}'")
+        return False
+
     return True
 
 
 def validate_protocol(protocol: dict):
     """Check if the whole protocol is valid"""
+    if not validate_structs(protocol):
+        sys.exit(1)
+
     messages = protocol["messages"]
     if messages is None:
         print("Error: File doesn't contain 'messages' field")
         sys.exit(1)
+
     list_id = []
+    structs = protocol.get("structs", {})
+
     for msg_name, msg_data in messages.items():
-        if not is_valid_msg(msg_data, list_id):
+        if not is_valid_msg(msg_data, list_id, structs):
             print(f"Error: {msg_name} invalid")
             sys.exit(1)
         list_id.append(msg_data["id"])
+
+
+def validate_structs(protocol: dict) -> bool:
+    """Check if all structs are well defined"""
+    if "structs" not in protocol:
+        return True
+
+    structs = protocol["structs"]
+
+    for struct_name, struct_data in structs.items():
+        if "fields" not in struct_data:
+            print(f"Error: Struct '{struct_name}' missing 'fields'")
+            return False
+
+        for field in struct_data["fields"]:
+            if "name" not in field or "type" not in field:
+                print(f"Error: Invalid field in struct '{struct_name}'")
+                return False
+
+            field_type = field["type"]
+
+            if field_type not in TYPE_MAP and field_type != "string":
+                print(f"Error: Unknown type '{field_type}' in struct '{struct_name}'")
+                return False
+
+            if field_type == "string":
+                if (
+                    "max_length" not in field
+                    or not isinstance(field["max_length"], int)
+                    or field["max_length"] <= 0
+                ):
+                    print(
+                        f"Error: Invalid max_length for string in struct '{struct_name}'"
+                    )
+                    return False
+
+    return True
 
 
 def get_endianness(protocol: dict) -> str:
@@ -87,12 +183,31 @@ def get_endianness(protocol: dict) -> str:
     return endianness
 
 
-def generate_struct_declaration(msg_name: str, msg_data: dict) -> str:
+def generate_struct_definition(struct_name: str, struct_data: dict) -> str:
+    """Generate a data structure, not a structure of a packet"""
+    output = ""
+
+    output += f"struct {struct_name} {{\n"
+
+    for field in struct_data["fields"]:
+        field_name = field["name"]
+        field_type = field["type"]
+
+        if field_type == "string":
+            output += f"    char {field_name}[{field['max_length']}];\n"
+        else:
+            output += f"    {TYPE_MAP[field_type]} {field_name};\n"
+
+    output += "};\n\n"
+
+    return output
+
+
+def generate_struct_declaration(msg_name: str, msg_data: dict, structs: dict) -> str:
     """Generate a struct from a packet definition"""
     output = ""
 
     output += f"struct {msg_name} {{\n"
-
     output += f"    static constexpr uint32_t ID = {msg_data['id']};\n\n"
 
     for field in msg_data["fields"]:
@@ -101,6 +216,41 @@ def generate_struct_declaration(msg_name: str, msg_data: dict) -> str:
 
         if field_type == "string":
             output += f"    char {field_name}[{field['max_length']}];\n"
+
+        elif field_type == "fixed_array":
+            element_type = field["element_type"]
+            max_size = field["max_size"]
+
+            if element_type in TYPE_MAP:
+                cpp_type = TYPE_MAP[element_type]
+            elif element_type in structs:
+                cpp_type = element_type
+            elif element_type == "string":
+                if "element_max_length" in field:
+                    output += f"    char {field_name}[{max_size}][{field['element_max_length']}];\n"
+                    continue
+                else:
+                    print("Error: fixed_array of strings needs 'element_max_length'")
+                    sys.exit(1)
+            else:
+                cpp_type = "uint8_t"  # Fallback
+
+            output += f"    {cpp_type} {field_name}[{max_size}];\n"
+
+        elif field_type == "dynamic_array":
+            element_type = field["element_type"]
+
+            if element_type in TYPE_MAP:
+                cpp_type = TYPE_MAP[element_type]
+            elif element_type in structs:
+                cpp_type = element_type
+            elif element_type == "string":
+                cpp_type = "std::string"
+            else:
+                cpp_type = "uint8_t"  # Fallback
+
+            output += f"    std::vector<{cpp_type}> {field_name};\n"
+
         else:
             output += f"    {TYPE_MAP[field_type]} {field_name};\n"
 
@@ -119,10 +269,18 @@ def generate_header(protocol: dict) -> str:
     output += "#include <cstdint>\n"
     output += "#include <vector>\n"
     output += "#include <cstring>\n\n"
+    output += "#include <string>\n\n"
     output += "namespace net {\n\n"
 
+    if "structs" in protocol:
+        output += "// ===== Structs =====\n\n"
+        for struct_name, struct_data in protocol["structs"].items():
+            output += generate_struct_definition(struct_name, struct_data)
+
+    output += "// ===== Messages =====\n\n"
+    structs = protocol.get("structs", {})
     for msg_name, msg_data in protocol["messages"].items():
-        output += generate_struct_declaration(msg_name, msg_data)
+        output += generate_struct_declaration(msg_name, msg_data, structs)
 
     output += "}  // namespace net\n"
 
@@ -169,7 +327,9 @@ def read_uint_bytes(
     return output
 
 
-def generate_serialize_impl(msg_name: str, fields: list, endianness: str) -> str:
+def generate_serialize_impl(
+    msg_name: str, fields: list, endianness: str, structs: dict
+) -> str:
     """Generate the serialize method of a struct"""
     output = ""
     output += f"std::vector<uint8_t> {msg_name}::serialize() const {{\n"
@@ -185,7 +345,237 @@ def generate_serialize_impl(msg_name: str, fields: list, endianness: str) -> str
 
         output += f"    // Write {field_name}\n"
 
-        if field_type == "string":
+        if field_type == "fixed_array":
+            element_type = field["element_type"]
+            max_size = field["max_size"]
+
+            count_field = None
+
+            possible_names = [
+                field_name.rstrip("s") + "_count",
+                field_name[:-3] + "y_count" if field_name.endswith("ies") else None,
+                field_name + "_count",
+            ]
+
+            for possible_name in possible_names:
+                if possible_name is None:
+                    continue
+                for f in fields:
+                    if f["name"] == possible_name:
+                        count_field = possible_name
+                        break
+                if count_field:
+                    break
+
+            if count_field is None:
+                for f in fields:
+                    if f["name"].endswith("_count") or f["name"].endswith("count"):
+                        if (
+                            f["name"].replace("_count", "") in field_name
+                            or field_name in f["name"]
+                        ):
+                            count_field = f["name"]
+                            break
+
+            if count_field is None:
+                print(f"Error: Cannot find count field for fixed_array '{field_name}'")
+                print(
+                    f"Expected one of: {[n for n in possible_names if n is not None]}"
+                )
+                sys.exit(1)
+
+            output += f"    for (uint32_t i = 0; i < {count_field} && i < {max_size}; ++i) {{\n"
+
+            if element_type in structs:
+                struct_data = structs[element_type]
+                for struct_field in struct_data["fields"]:
+                    sf_name = struct_field["name"]
+                    sf_type = struct_field["type"]
+
+                    if sf_type in ["uint8", "int8"]:
+                        output += (
+                            f"        buffer.push_back({field_name}[i].{sf_name});\n"
+                        )
+
+                    elif sf_type in ["uint16", "int16"]:
+                        temp = write_uint_bytes(
+                            f"{field_name}[i].{sf_name}", 2, endianness
+                        )
+                        output += "    " + temp.replace("\n", "\n    ")
+
+                    elif sf_type in ["uint32", "int32"]:
+                        temp = write_uint_bytes(
+                            f"{field_name}[i].{sf_name}", 4, endianness
+                        )
+                        output += "    " + temp.replace("\n", "\n    ")
+
+                    elif sf_type in ["uint64", "int64"]:
+                        temp = write_uint_bytes(
+                            f"{field_name}[i].{sf_name}", 8, endianness
+                        )
+                        output += "    " + temp.replace("\n", "\n    ")
+
+                    elif sf_type == "float":
+                        output += "        {\n"
+                        output += "            uint32_t temp;\n"
+                        output += f"            std::memcpy(&temp, &{field_name}[i].{sf_name}, sizeof(float));\n"
+                        temp_write = write_uint_bytes("temp", 4, endianness)
+                        output += "        " + temp_write.replace("\n", "\n        ")
+                        output += "        }\n"
+
+                    elif sf_type == "double":
+                        output += "        {\n"
+                        output += "            uint64_t temp;\n"
+                        output += f"            std::memcpy(&temp, &{field_name}[i].{sf_name}, sizeof(double));\n"
+                        temp_write = write_uint_bytes("temp", 8, endianness)
+                        output += "        " + temp_write.replace("\n", "\n        ")
+                        output += "        }\n"
+
+                    elif sf_type == "string":
+                        max_len = struct_field["max_length"]
+                        output += (
+                            f"        for (uint32_t j = 0; j < {max_len}; ++j) {{\n"
+                        )
+                        output += f"            buffer.push_back({field_name}[i].{sf_name}[j]);\n"
+                        output += "        }\n"
+
+            elif element_type in TYPE_MAP:
+                if element_type in ["uint8", "int8"]:
+                    output += f"        buffer.push_back({field_name}[i]);\n"
+
+                elif element_type in ["uint16", "int16"]:
+                    temp = write_uint_bytes(f"{field_name}[i]", 2, endianness)
+                    output += "    " + temp.replace("\n", "\n    ")
+
+                elif element_type in ["uint32", "int32"]:
+                    temp = write_uint_bytes(f"{field_name}[i]", 4, endianness)
+                    output += "    " + temp.replace("\n", "\n    ")
+
+                elif element_type in ["uint64", "int64"]:
+                    temp = write_uint_bytes(f"{field_name}[i]", 8, endianness)
+                    output += "    " + temp.replace("\n", "\n    ")
+
+                elif element_type == "float":
+                    output += "        {\n"
+                    output += "            uint32_t temp;\n"
+                    output += f"            std::memcpy(&temp, &{field_name}[i], sizeof(float));\n"
+                    temp_write = write_uint_bytes("temp", 4, endianness)
+                    output += "        " + temp_write.replace("\n", "\n        ")
+                    output += "        }\n"
+
+                elif element_type == "double":
+                    output += "        {\n"
+                    output += "            uint64_t temp;\n"
+                    output += f"            std::memcpy(&temp, &{field_name}[i], sizeof(double));\n"
+                    temp_write = write_uint_bytes("temp", 8, endianness)
+                    output += "        " + temp_write.replace("\n", "\n        ")
+                    output += "        }\n"
+
+            output += "    }\n"
+
+        elif field_type == "dynamic_array":
+            element_type = field["element_type"]
+
+            output += "    {\n"
+            output += (
+                f"        uint32_t size = static_cast<uint32_t>({field_name}.size());\n"
+            )
+            temp_size = write_uint_bytes("size", 4, endianness)
+            output += "    " + temp_size.replace("\n", "\n    ")
+            output += "    }\n"
+
+            output += f"    for (const auto& elem : {field_name}) {{\n"
+
+            if element_type in structs:
+                struct_data = structs[element_type]
+                for struct_field in struct_data["fields"]:
+                    sf_name = struct_field["name"]
+                    sf_type = struct_field["type"]
+
+                    if sf_type in ["uint8", "int8"]:
+                        output += f"        buffer.push_back(elem.{sf_name});\n"
+
+                    elif sf_type in ["uint16", "int16"]:
+                        temp = write_uint_bytes(f"elem.{sf_name}", 2, endianness)
+                        output += "    " + temp.replace("\n", "\n    ")
+
+                    elif sf_type in ["uint32", "int32"]:
+                        temp = write_uint_bytes(f"elem.{sf_name}", 4, endianness)
+                        output += "    " + temp.replace("\n", "\n    ")
+
+                    elif sf_type in ["uint64", "int64"]:
+                        temp = write_uint_bytes(f"elem.{sf_name}", 8, endianness)
+                        output += "    " + temp.replace("\n", "\n    ")
+
+                    elif sf_type == "float":
+                        output += "        {\n"
+                        output += "            uint32_t temp;\n"
+                        output += f"            std::memcpy(&temp, &elem.{sf_name}, sizeof(float));\n"
+                        temp_write = write_uint_bytes("temp", 4, endianness)
+                        output += "        " + temp_write.replace("\n", "\n        ")
+                        output += "        }\n"
+
+                    elif sf_type == "double":
+                        output += "        {\n"
+                        output += "            uint64_t temp;\n"
+                        output += f"            std::memcpy(&temp, &elem.{sf_name}, sizeof(double));\n"
+                        temp_write = write_uint_bytes("temp", 8, endianness)
+                        output += "        " + temp_write.replace("\n", "\n        ")
+                        output += "        }\n"
+
+                    elif sf_type == "string":
+                        max_len = struct_field["max_length"]
+                        output += (
+                            f"        for (uint32_t j = 0; j < {max_len}; ++j) {{\n"
+                        )
+                        output += f"            buffer.push_back(elem.{sf_name}[j]);\n"
+                        output += "        }\n"
+
+            elif element_type in TYPE_MAP:
+                if element_type in ["uint8", "int8"]:
+                    output += "        buffer.push_back(elem);\n"
+
+                elif element_type in ["uint16", "int16"]:
+                    temp = write_uint_bytes("elem", 2, endianness)
+                    output += "    " + temp.replace("\n", "\n    ")
+
+                elif element_type in ["uint32", "int32"]:
+                    temp = write_uint_bytes("elem", 4, endianness)
+                    output += "    " + temp.replace("\n", "\n    ")
+
+                elif element_type in ["uint64", "int64"]:
+                    temp = write_uint_bytes("elem", 8, endianness)
+                    output += "    " + temp.replace("\n", "\n    ")
+
+                elif element_type == "float":
+                    output += "        {\n"
+                    output += "            uint32_t temp;\n"
+                    output += "            std::memcpy(&temp, &elem, sizeof(float));\n"
+                    temp_write = write_uint_bytes("temp", 4, endianness)
+                    output += "        " + temp_write.replace("\n", "\n        ")
+                    output += "        }\n"
+
+                elif element_type == "double":
+                    output += "        {\n"
+                    output += "            uint64_t temp;\n"
+                    output += "            std::memcpy(&temp, &elem, sizeof(double));\n"
+                    temp_write = write_uint_bytes("temp", 8, endianness)
+                    output += "        " + temp_write.replace("\n", "\n        ")
+                    output += "        }\n"
+
+            elif element_type == "string":
+                output += "        {\n"
+                output += "            uint32_t str_len = static_cast<uint32_t>(elem.size());\n"
+                temp_len = write_uint_bytes("str_len", 4, endianness)
+                output += "        " + temp_len.replace("\n", "\n        ")
+                output += "            for (char c : elem) {\n"
+                output += "                buffer.push_back(c);\n"
+                output += "            }\n"
+                output += "        }\n"
+
+            output += "    }\n"
+
+        elif field_type == "string":
             max_len = field["max_length"]
             output += f"    for (uint32_t i = 0; i < {max_len}; ++i) {{\n"
             output += f"        buffer.push_back({field_name}[i]);\n"
@@ -228,7 +618,9 @@ def generate_serialize_impl(msg_name: str, fields: list, endianness: str) -> str
     return output
 
 
-def generate_deserialize_impl(msg_name: str, fields: list, endianness: str) -> str:
+def generate_deserialize_impl(
+    msg_name: str, fields: list, endianness: str, structs: dict
+) -> str:
     """Generate the deserialize method of a struct"""
     output = ""
 
@@ -247,7 +639,337 @@ def generate_deserialize_impl(msg_name: str, fields: list, endianness: str) -> s
 
         output += f"    // Read {field_name}\n"
 
-        if field_type == "string":
+        if field_type == "fixed_array":
+            element_type = field["element_type"]
+            max_size = field["max_size"]
+
+            count_field = None
+
+            possible_names = [
+                field_name.rstrip("s") + "_count",
+                field_name[:-3] + "y_count" if field_name.endswith("ies") else None,
+                field_name + "_count",
+            ]
+
+            for possible_name in possible_names:
+                if possible_name is None:
+                    continue
+                for f in fields:
+                    if f["name"] == possible_name:
+                        count_field = possible_name
+                        break
+                if count_field:
+                    break
+
+            if count_field is None:
+                for f in fields:
+                    if f["name"].endswith("_count") or f["name"].endswith("count"):
+                        if (
+                            f["name"].replace("_count", "") in field_name
+                            or field_name in f["name"]
+                        ):
+                            count_field = f["name"]
+                            break
+
+            if count_field is None:
+                print(f"Error: Cannot find count field for fixed_array '{field_name}'")
+                sys.exit(1)
+
+            output += f"    for (uint32_t i = 0; i < msg.{count_field} && i < {max_size}; ++i) {{\n"
+
+            if element_type in structs:
+                struct_data = structs[element_type]
+                for struct_field in struct_data["fields"]:
+                    sf_name = struct_field["name"]
+                    sf_type = struct_field["type"]
+
+                    if sf_type in ["uint8", "int8"]:
+                        output += (
+                            f"        msg.{field_name}[i].{sf_name} = data[offset];\n"
+                        )
+                        output += "        offset += 1;\n"
+
+                    elif sf_type == "uint16":
+                        temp = read_uint_bytes(
+                            f"{field_name}[i].{sf_name}", 2, "uint16_t", endianness
+                        )
+                        output += "    " + temp.replace("\n", "\n    ")
+
+                    elif sf_type == "int16":
+                        temp = read_uint_bytes(
+                            f"{field_name}[i].{sf_name}", 2, "int16_t", endianness
+                        )
+                        output += "    " + temp.replace("\n", "\n    ")
+
+                    elif sf_type == "uint32":
+                        temp = read_uint_bytes(
+                            f"{field_name}[i].{sf_name}", 4, "uint32_t", endianness
+                        )
+                        output += "    " + temp.replace("\n", "\n    ")
+
+                    elif sf_type == "int32":
+                        temp = read_uint_bytes(
+                            f"{field_name}[i].{sf_name}", 4, "int32_t", endianness
+                        )
+                        output += "    " + temp.replace("\n", "\n    ")
+
+                    elif sf_type == "uint64":
+                        temp = read_uint_bytes(
+                            f"{field_name}[i].{sf_name}", 8, "uint64_t", endianness
+                        )
+                        output += "    " + temp.replace("\n", "\n    ")
+
+                    elif sf_type == "int64":
+                        temp = read_uint_bytes(
+                            f"{field_name}[i].{sf_name}", 8, "int64_t", endianness
+                        )
+                        output += "    " + temp.replace("\n", "\n    ")
+
+                    elif sf_type == "float":
+                        output += "        {\n"
+                        output += "            uint32_t temp;\n"
+                        temp_read = read_uint_bytes(
+                            "temp", 4, "uint32_t", endianness
+                        ).replace("msg.", "")
+                        output += "        " + temp_read.replace("\n", "\n        ")
+                        output += f"            std::memcpy(&msg.{field_name}[i].{sf_name}, &temp, sizeof(float));\n"
+                        output += "        }\n"
+
+                    elif sf_type == "double":
+                        output += "        {\n"
+                        output += "            uint64_t temp;\n"
+                        temp_read = read_uint_bytes(
+                            "temp", 8, "uint64_t", endianness
+                        ).replace("msg.", "")
+                        output += "        " + temp_read.replace("\n", "\n        ")
+                        output += f"            std::memcpy(&msg.{field_name}[i].{sf_name}, &temp, sizeof(double));\n"
+                        output += "        }\n"
+
+                    elif sf_type == "string":
+                        max_len = struct_field["max_length"]
+                        output += f"        std::memcpy(msg.{field_name}[i].{sf_name}, data.data() + offset, {max_len});\n"
+                        output += f"        offset += {max_len};\n"
+
+            elif element_type in TYPE_MAP:
+                if element_type in ["uint8", "int8"]:
+                    output += f"        msg.{field_name}[i] = data[offset];\n"
+                    output += "        offset += 1;\n"
+
+                elif element_type == "uint16":
+                    temp = read_uint_bytes(
+                        f"{field_name}[i]", 2, "uint16_t", endianness
+                    )
+                    output += "    " + temp.replace("\n", "\n    ")
+
+                elif element_type == "int16":
+                    temp = read_uint_bytes(f"{field_name}[i]", 2, "int16_t", endianness)
+                    output += "    " + temp.replace("\n", "\n    ")
+
+                elif element_type == "uint32":
+                    temp = read_uint_bytes(
+                        f"{field_name}[i]", 4, "uint32_t", endianness
+                    )
+                    output += "    " + temp.replace("\n", "\n    ")
+
+                elif element_type == "int32":
+                    temp = read_uint_bytes(f"{field_name}[i]", 4, "int32_t", endianness)
+                    output += "    " + temp.replace("\n", "\n    ")
+
+                elif element_type == "uint64":
+                    temp = read_uint_bytes(
+                        f"{field_name}[i]", 8, "uint64_t", endianness
+                    )
+                    output += "    " + temp.replace("\n", "\n    ")
+
+                elif element_type == "int64":
+                    temp = read_uint_bytes(f"{field_name}[i]", 8, "int64_t", endianness)
+                    output += "    " + temp.replace("\n", "\n    ")
+
+                elif element_type == "float":
+                    output += "        {\n"
+                    output += "            uint32_t temp;\n"
+                    temp_read = read_uint_bytes(
+                        "temp", 4, "uint32_t", endianness
+                    ).replace("msg.", "")
+                    output += "        " + temp_read.replace("\n", "\n        ")
+                    output += f"            std::memcpy(&msg.{field_name}[i], &temp, sizeof(float));\n"
+                    output += "        }\n"
+
+                elif element_type == "double":
+                    output += "        {\n"
+                    output += "            uint64_t temp;\n"
+                    temp_read = read_uint_bytes(
+                        "temp", 8, "uint64_t", endianness
+                    ).replace("msg.", "")
+                    output += "        " + temp_read.replace("\n", "\n        ")
+                    output += f"            std::memcpy(&msg.{field_name}[i], &temp, sizeof(double));\n"
+                    output += "        }\n"
+
+            output += "    }\n"
+
+        elif field_type == "dynamic_array":
+            element_type = field["element_type"]
+
+            output += "    {\n"
+            output += "        uint32_t size;\n"
+            temp_read = read_uint_bytes("size", 4, "uint32_t", endianness).replace(
+                "msg.", ""
+            )
+            output += "    " + temp_read.replace("\n", "\n    ")
+            output += f"        msg.{field_name}.resize(size);\n"
+            output += "    }\n"
+
+            output += f"    for (auto& elem : msg.{field_name}) {{\n"
+
+            if element_type in structs:
+                struct_data = structs[element_type]
+                for struct_field in struct_data["fields"]:
+                    sf_name = struct_field["name"]
+                    sf_type = struct_field["type"]
+
+                    if sf_type in ["uint8", "int8"]:
+                        output += f"        elem.{sf_name} = data[offset];\n"
+                        output += "        offset += 1;\n"
+
+                    elif sf_type == "uint16":
+                        temp = read_uint_bytes(
+                            f"elem.{sf_name}", 2, "uint16_t", endianness
+                        )
+                        output += "    " + temp.replace("\n", "\n    ").replace(
+                            "msg.", ""
+                        )
+
+                    elif sf_type == "int16":
+                        temp = read_uint_bytes(
+                            f"elem.{sf_name}", 2, "int16_t", endianness
+                        )
+                        output += "    " + temp.replace("\n", "\n    ").replace(
+                            "msg.", ""
+                        )
+
+                    elif sf_type == "uint32":
+                        temp = read_uint_bytes(
+                            f"elem.{sf_name}", 4, "uint32_t", endianness
+                        )
+                        output += "    " + temp.replace("\n", "\n    ").replace(
+                            "msg.", ""
+                        )
+
+                    elif sf_type == "int32":
+                        temp = read_uint_bytes(
+                            f"elem.{sf_name}", 4, "int32_t", endianness
+                        )
+                        output += "    " + temp.replace("\n", "\n    ").replace(
+                            "msg.", ""
+                        )
+
+                    elif sf_type == "uint64":
+                        temp = read_uint_bytes(
+                            f"elem.{sf_name}", 8, "uint64_t", endianness
+                        )
+                        output += "    " + temp.replace("\n", "\n    ").replace(
+                            "msg.", ""
+                        )
+
+                    elif sf_type == "int64":
+                        temp = read_uint_bytes(
+                            f"elem.{sf_name}", 8, "int64_t", endianness
+                        )
+                        output += "    " + temp.replace("\n", "\n    ").replace(
+                            "msg.", ""
+                        )
+
+                    elif sf_type == "float":
+                        output += "        {\n"
+                        output += "            uint32_t temp;\n"
+                        temp_read = read_uint_bytes(
+                            "temp", 4, "uint32_t", endianness
+                        ).replace("msg.", "")
+                        output += "        " + temp_read.replace("\n", "\n        ")
+                        output += f"            std::memcpy(&elem.{sf_name}, &temp, sizeof(float));\n"
+                        output += "        }\n"
+
+                    elif sf_type == "double":
+                        output += "        {\n"
+                        output += "            uint64_t temp;\n"
+                        temp_read = read_uint_bytes(
+                            "temp", 8, "uint64_t", endianness
+                        ).replace("msg.", "")
+                        output += "        " + temp_read.replace("\n", "\n        ")
+                        output += f"            std::memcpy(&elem.{sf_name}, &temp, sizeof(double));\n"
+                        output += "        }\n"
+
+                    elif sf_type == "string":
+                        max_len = struct_field["max_length"]
+                        output += f"        std::memcpy(elem.{sf_name}, data.data() + offset, {max_len});\n"
+                        output += f"        offset += {max_len};\n"
+
+            elif element_type in TYPE_MAP:
+                if element_type in ["uint8", "int8"]:
+                    output += "        elem = data[offset];\n"
+                    output += "        offset += 1;\n"
+
+                elif element_type == "uint16":
+                    temp = read_uint_bytes("elem", 2, "uint16_t", endianness)
+                    output += "    " + temp.replace("\n", "\n    ").replace("msg.", "")
+
+                elif element_type == "int16":
+                    temp = read_uint_bytes("elem", 2, "int16_t", endianness)
+                    output += "    " + temp.replace("\n", "\n    ").replace("msg.", "")
+
+                elif element_type == "uint32":
+                    temp = read_uint_bytes("elem", 4, "uint32_t", endianness)
+                    output += "    " + temp.replace("\n", "\n    ").replace("msg.", "")
+
+                elif element_type == "int32":
+                    temp = read_uint_bytes("elem", 4, "int32_t", endianness)
+                    output += "    " + temp.replace("\n", "\n    ").replace("msg.", "")
+
+                elif element_type == "uint64":
+                    temp = read_uint_bytes("elem", 8, "uint64_t", endianness)
+                    output += "    " + temp.replace("\n", "\n    ").replace("msg.", "")
+
+                elif element_type == "int64":
+                    temp = read_uint_bytes("elem", 8, "int64_t", endianness)
+                    output += "    " + temp.replace("\n", "\n    ").replace("msg.", "")
+
+                elif element_type == "float":
+                    output += "        {\n"
+                    output += "            uint32_t temp;\n"
+                    temp_read = read_uint_bytes(
+                        "temp", 4, "uint32_t", endianness
+                    ).replace("msg.", "")
+                    output += "        " + temp_read.replace("\n", "\n        ")
+                    output += "            std::memcpy(&elem, &temp, sizeof(float));\n"
+                    output += "        }\n"
+
+                elif element_type == "double":
+                    output += "        {\n"
+                    output += "            uint64_t temp;\n"
+                    temp_read = read_uint_bytes(
+                        "temp", 8, "uint64_t", endianness
+                    ).replace("msg.", "")
+                    output += "        " + temp_read.replace("\n", "\n        ")
+                    output += "            std::memcpy(&elem, &temp, sizeof(double));\n"
+                    output += "        }\n"
+
+            elif element_type == "string":
+                output += "        {\n"
+                output += "            uint32_t str_len;\n"
+                temp_read = read_uint_bytes(
+                    "str_len", 4, "uint32_t", endianness
+                ).replace("msg.", "")
+                output += "        " + temp_read.replace("\n", "\n        ")
+                output += "            elem.resize(str_len);\n"
+                output += "            for (uint32_t j = 0; j < str_len; ++j) {\n"
+                output += "                elem[j] = data[offset];\n"
+                output += "                offset += 1;\n"
+                output += "            }\n"
+                output += "        }\n"
+
+            output += "    }\n"
+
+        elif field_type == "string":
             max_len = field["max_length"]
             output += (
                 f"    std::memcpy(msg.{field_name}, data.data() + offset, {max_len});\n"
@@ -313,9 +1035,15 @@ def generate_source(protocol: dict, endianness: str) -> str:
     output += '#include "Network/generated_messages.hpp"\n\n'
     output += "namespace net {\n\n"
 
+    structs = protocol.get("structs", {})
+
     for msg_name, msg_data in protocol["messages"].items():
-        output += generate_serialize_impl(msg_name, msg_data["fields"], endianness)
-        output += generate_deserialize_impl(msg_name, msg_data["fields"], endianness)
+        output += generate_serialize_impl(
+            msg_name, msg_data["fields"], endianness, structs
+        )
+        output += generate_deserialize_impl(
+            msg_name, msg_data["fields"], endianness, structs
+        )
 
     output += "}  // namespace net\n"
     return output
