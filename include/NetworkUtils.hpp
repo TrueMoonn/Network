@@ -3,8 +3,6 @@
 #include <cstdint>
 #include <string>
 
-#include "Network/NetworkPlatform.hpp"
-
 namespace net {
 
 class NetworkUtils {

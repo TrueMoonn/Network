@@ -8,9 +8,9 @@
 #include <algorithm>
 #include <vector>
 
-#include "Network/Server.hpp"
-#include "Network/PacketSerializer.hpp"
-#include "Network/ProtocolManager.hpp"
+#include "Server.hpp"
+#include "PacketSerializer.hpp"
+#include "ProtocolManager.hpp"
 
 namespace net {
 

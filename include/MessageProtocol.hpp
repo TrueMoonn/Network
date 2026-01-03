@@ -1,6 +1,6 @@
 #pragma once
 #include <stdexcept>
-#include "Network/ProtocolManager.hpp"
+#include "ProtocolManager.hpp"
 
 namespace net {
 

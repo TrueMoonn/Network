@@ -2,14 +2,13 @@
 
 #include <cstdint>
 #include <string>
-#include <map>
 #include <unordered_map>
 #include <vector>
 
-#include "Network/NetworkPlatform.hpp"
-#include "Network/Address.hpp"
-#include "Network/NetworkSocket.hpp"
-#include "Network/ProtocolManager.hpp"
+#include "NetworkPlatform.hpp"
+#include "Address.hpp"
+#include "NetworkSocket.hpp"
+#include "ProtocolManager.hpp"
 
 #define CAST_UINT32 static_cast<uint32_t>
 
@@ -17,7 +16,7 @@ namespace net {
 
 /**
  * @brief Communicate in UDP or TCP with multiple Client
- * 
+ *
  * Use ProtocolManager class to format and unformat packets sent and received.
  * @see ProtocolManager
  */
@@ -25,14 +24,14 @@ class Server {
  public:
     /**
      * @brief Construct a new Server object
-     * 
+     *
      * @param protocol Choose the communication type of your Server. Mode -> "UDP" or "TCP".
      */
     explicit Server(const std::string&, uint16_t, ProtocolManager);
 
     /**
      * @brief Destroy the Server object
-     * 
+     *
      * Call stop method
      * @see Server#stop
      */
@@ -40,7 +39,7 @@ class Server {
 
     /**
      * @brief Start the Server
-     * 
+     *
      * @return true If succeed
      * @return false If failed (bind failed, listen failed, ...)
      */
@@ -48,7 +47,7 @@ class Server {
 
     /**
      * @brief Stop the Server
-     * 
+     *
      * Close all sockets connected to and clear vectors.
      */
     void stop();
@@ -64,7 +63,7 @@ class Server {
 
     /**
      * @brief Set the Timeout in poll()
-     * 
+     *
      * @param milliseconds The timeout to set (in ms)
      * @return true If succeed
      * @return false If failed (Socket invalid)
@@ -73,16 +72,16 @@ class Server {
 
     /**
      * @brief Send data to specific client
-     * 
+     *
      * @param dest FD of the client
      * @param data Datas that will be sent
-     * @return int Size of datas sent 
+     * @return int Size of datas sent
      */
     int tcpSend(const int dest, std::vector<uint8_t> data);
 
     /**
      * @brief Send data to specific client
-     * 
+     *
      * @param dest Address of the client. @see Address
      * @param data Datas that will be sent
      * @return int Size of datas sent
@@ -91,7 +90,7 @@ class Server {
 
     /**
      * @brief Receive datas sent by connected clients (TCP mode)
-     * 
+     *
      * @param timeout Time to wait for receive
      * @return std::vector<int> Vector of FD from which data has been received
      */
@@ -99,7 +98,7 @@ class Server {
 
     /**
      * @brief Receive datas sent by connected clients (UDP mode)
-     * 
+     *
      * @param timeout Time to wait for receive
      * @param maxInputs Max input to get from clients before stop receiving
      * @return std::vector<Address> Vector of Address from which data has been received
@@ -108,7 +107,7 @@ class Server {
 
     /**
      * @brief Extract packet from datas on ClientInfo->input and remove protocol informations (TCP mode)
-     * 
+     *
      * @param src Client's FD that you want to unpack datas
      * @param nbPackets Number of packets you want to extract
      * @return std::vector<std::vector<uint8_t>> Unpacked datas
@@ -117,7 +116,7 @@ class Server {
 
     /**
      * @brief Extract packet from datas on ClientInfo->input and remove protocol informations (UDP mode)
-     * 
+     *
      * @param src Client's Address that you want to unpack datas
      * @param nbPackets Number of packets you want to extract
      * @return std::vector<std::vector<uint8_t>> Unpacked Datas @see
@@ -126,7 +125,7 @@ class Server {
 
     /**
      * @brief Return the state of the server
-     * 
+     *
      * @return true Means running
      * @return false Means not running
      */
@@ -134,21 +133,21 @@ class Server {
 
     /**
      * @brief Get the Protocol object
-     * 
+     *
      * @return SocketType The protocol type (UDP or TCP)
      */
     SocketType getProtocol() const { return _socket.getType(); }
 
     /**
      * @brief Get Server's port
-     * 
+     *
      * @return uint16_t Server's port
      */
     uint16_t getPort() const { return _port; }
 
     /**
      * @brief Accept client in TCP mode
-     * 
+     *
      * @param client_addr Client's Address
      * @param currentTime Timestamp at the connection
      * @return int Client's FD if accepted

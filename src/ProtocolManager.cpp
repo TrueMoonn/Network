@@ -9,7 +9,7 @@
 #include <vector>
 #include <string>
 
-#include "Network/ProtocolManager.hpp"
+#include "ProtocolManager.hpp"
 
 namespace net {
 

@@ -3,28 +3,28 @@
 #include <cstdint>
 #include <string>
 
-#include "Network/NetworkPlatform.hpp"
+#include "NetworkPlatform.hpp"
 
 namespace net {
 
 /**
- * @brief 
- * 
+ * @brief
+ *
  * Address (ip and port -> ex: 127.0.0.1:8080)
- * 
+ *
  * Identifier to communicate between Client and server
  */
 class Address {
  public:
     /**
      * @brief Construct a new Address object
-     * 
+     *
      */
     Address();
 
     /**
      * @brief Construct a new Address object
-     * 
+     *
      * @param ip ex: 127.0.0.1 given as string
      * @param port ex: 8080
      */
@@ -32,7 +32,7 @@ class Address {
 
     /**
      * @brief Construct a new Address object
-     * 
+     *
      * @param ip ex: 127.0.0.1 given as uint32_t
      * @param port ex: 8080
      */
@@ -40,7 +40,7 @@ class Address {
 
     /**
      * @brief Create an Address from a sockaddr_in struct
-     * 
+     *
      * @param addr structure containing internet socket informations
      * @return Address created from the addr parameter
      */
@@ -48,29 +48,29 @@ class Address {
 
     /**
      * @brief Create a sockaddr_in struct from this class
-     * 
+     *
      * @return sockaddr_in struct created from the class
      */
     sockaddr_in toSockAddr() const;
 
     /**
      * @brief Get the IP
-     * 
-     * @return std::string 
+     *
+     * @return std::string
      */
     std::string getIP() const;
 
     /**
      * @brief Get the port
-     * 
+     *
      * @return uint16_t
      */
     uint16_t getPort() const;
 
     /**
      * @brief Get the IP
-     * 
-     * @return uint32_t 
+     *
+     * @return uint32_t
      */
     uint32_t getIPAsInt() const;
 

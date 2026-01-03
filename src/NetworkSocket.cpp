@@ -1,4 +1,4 @@
-#include "Network/NetworkSocket.hpp"
+#include "NetworkSocket.hpp"
 
 #include <cstring>
 #include <cstdio>
