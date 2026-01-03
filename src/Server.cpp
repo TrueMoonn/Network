@@ -1,4 +1,3 @@
-#include <iostream>
 #include <cstring>
 #include <cstdio>
 #include <ctime>
@@ -9,7 +8,6 @@
 #include <vector>
 
 #include "Server.hpp"
-#include "PacketSerializer.hpp"
 #include "ProtocolManager.hpp"
 
 namespace net {
