@@ -28,7 +28,7 @@ endif ()
 
 ########## PROTOCOL GENERATION ##########
 # Chemins des fichiers générés
-set(GENERATED_HEADER "${NET_HDR_DIR}/generated_messages.hpp")
+set(GENERATED_HEADER "${NET_HDR_DIR}/Network/generated_messages.hpp")
 set(GENERATED_SOURCE "${NET_SRC_DIR}/generated_messages.cpp")
 set(PROTOCOL_JSON "${PROJECT_SOURCE_DIR}/config/protocol.json")
 set(GENERATOR_SCRIPT "${PROJECT_SOURCE_DIR}/tools/generate_protocol.py")

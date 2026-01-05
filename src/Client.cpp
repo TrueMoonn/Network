@@ -3,8 +3,8 @@
 #include <string>
 #include <vector>
 #include <algorithm>
-#include "Client.hpp"
-#include "NetworkPlatform.hpp"
+#include "Network/Client.hpp"
+#include "Network/NetworkPlatform.hpp"
 
 namespace net {
 

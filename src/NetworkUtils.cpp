@@ -10,8 +10,8 @@
 #include <unistd.h>
 #endif
 
-#include "NetworkUtils.hpp"
-#include "NetworkPlatform.hpp"
+#include "Network/NetworkUtils.hpp"
+#include "Network/NetworkPlatform.hpp"
 
 namespace net {
 

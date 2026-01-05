@@ -7,8 +7,8 @@
 #include <algorithm>
 #include <vector>
 
-#include "Server.hpp"
-#include "ProtocolManager.hpp"
+#include "Network/Server.hpp"
+#include "Network/ProtocolManager.hpp"
 
 namespace net {
 

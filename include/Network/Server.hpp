@@ -5,10 +5,10 @@
 #include <unordered_map>
 #include <vector>
 
-#include "NetworkPlatform.hpp"
-#include "Address.hpp"
-#include "NetworkSocket.hpp"
-#include "ProtocolManager.hpp"
+#include "Network/NetworkPlatform.hpp"
+#include "Network/Address.hpp"
+#include "Network/NetworkSocket.hpp"
+#include "Network/ProtocolManager.hpp"
 
 #define CAST_UINT32 static_cast<uint32_t>
 

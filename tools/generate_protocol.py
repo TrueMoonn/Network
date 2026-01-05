@@ -1032,7 +1032,7 @@ def generate_source(protocol: dict, endianness: str) -> str:
     """Generate the complete .cpp file containing all definitions of"""
     """ serialize and deserialize methods of protocol struct"""
     output = ""
-    output += '#include "generated_messages.hpp"\n\n'
+    output += '#include "Network/generated_messages.hpp"\n\n'
     output += "namespace net {\n\n"
 
     structs = protocol.get("structs", {})
@@ -1065,7 +1065,7 @@ def main():
     endianness = get_endianness(protocol)
 
     header = generate_header(protocol)
-    write_file("include/generated_messages.hpp", header)
+    write_file("include/Network/generated_messages.hpp", header)
     source = generate_source(protocol, endianness)
     write_file("src/generated_messages.cpp", source)
 

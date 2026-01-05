@@ -3,10 +3,10 @@
 #include <string>
 #include <vector>
 
-#include "Address.hpp"
-#include "NetworkSocket.hpp"
-#include "ProtocolManager.hpp"
-#include "PacketSerializer.hpp"
+#include "Network/Address.hpp"
+#include "Network/NetworkSocket.hpp"
+#include "Network/ProtocolManager.hpp"
+#include "Network/PacketSerializer.hpp"
 
 #define CAST_UINT32 static_cast<uint32_t>
 

@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <string>
 
-#include "NetworkPlatform.hpp"
-#include "Address.hpp"
+#include "Network/NetworkPlatform.hpp"
+#include "Network/Address.hpp"
 
 namespace net {
 
