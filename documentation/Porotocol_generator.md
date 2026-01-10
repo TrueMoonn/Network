@@ -275,6 +275,54 @@ Define network message types with unique IDs.
 }
 ```
 
+## Message Compression
+
+Messages can be automatically compressed using LZ4 by adding the `"compressed": true` field.
+
+### Compressed Message
+
+```json
+"LARGE_DATA": {
+  "id": 200,
+  "compressed": true,
+  "fields": [
+    {"name": "map_data", "type": "string", "max_length": 4096},
+    {"name": "texture_data", "type": "string", "max_length": 8192}
+  ]
+}
+```
+
+When `"compressed": true` is set:
+- The `serialize()` method automatically compresses the payload using LZ4
+- The `deserialize()` method automatically decompresses the data
+- A 4-byte uncompressed size header is added before the compressed data
+- If compression fails or produces larger data, the original data is kept
+
+### Usage Example
+
+```cpp
+net::LARGE_DATA msg;
+std::strcpy(msg.map_data, "... large repetitive data ...");
+std::strcpy(msg.texture_data, "... large repetitive data ...");
+
+// Automatically compressed during serialization
+auto compressed_data = msg.serialize();
+
+// Automatically decompressed during deserialization
+auto received_msg = net::LARGE_DATA::deserialize(compressed_data);
+```
+
+### Wire Format for Compressed Messages
+
+```
+Offset | Size              | Field
+-------|-------------------|-------
+0      | 4                 | Uncompressed size (little-endian)
+4      | variable          | LZ4 compressed data
+```
+
+The compressed data contains the serialized message (including message ID and all fields).
+
 # Protocol Generator - Complete Example
 
 ## Input: protocol.json

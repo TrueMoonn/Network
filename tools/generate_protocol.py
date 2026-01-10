@@ -39,6 +39,9 @@ def is_valid_msg(msg: dict, list_id: list, structs: dict) -> bool:
     if "fields" not in msg or not isinstance(msg["fields"], list):
         return False
 
+    if "compressed" in msg and not isinstance(msg["compressed"], bool):
+        return False
+
     for field in msg["fields"]:
         if "name" not in field or not isinstance(field["name"], str):
             return False
@@ -269,7 +272,18 @@ def generate_header(protocol: dict) -> str:
     output += "#include <cstdint>\n"
     output += "#include <vector>\n"
     output += "#include <cstring>\n\n"
-    output += "#include <string>\n\n"
+    output += "#include <string>\n"
+
+    needs_lz4 = False
+    for msg_name, msg_data in protocol["messages"].items():
+        if msg_data.get("compressed", False):
+            needs_lz4 = True
+            break
+
+    if needs_lz4:
+        output += "#include <lz4.h>\n"
+
+    output += "\n"
     output += "namespace net {\n\n"
 
     if "structs" in protocol:
@@ -328,12 +342,21 @@ def read_uint_bytes(
 
 
 def generate_serialize_impl(
-    msg_name: str, fields: list, endianness: str, structs: dict
+    msg_name: str,
+    fields: list,
+    endianness: str,
+    structs: dict,
+    compressed: bool = False,
 ) -> str:
     """Generate the serialize method of a struct"""
     output = ""
     output += f"std::vector<uint8_t> {msg_name}::serialize() const {{\n"
-    output += "    std::vector<uint8_t> buffer;\n\n"
+
+    if compressed:
+        output += "    std::vector<uint8_t> uncompressed_buffer;\n"
+        output += "    std::vector<uint8_t>& buffer = uncompressed_buffer;\n\n"
+    else:
+        output += "    std::vector<uint8_t> buffer;\n\n"
 
     output += "    // Write message ID\n"
     output += write_uint_bytes("ID", 4, endianness)
@@ -613,13 +636,51 @@ def generate_serialize_impl(
 
         output += "\n"
 
-    output += "    return buffer;\n"
+    if compressed:
+        output += "    // Compress the buffer using LZ4\n"
+        output += "    std::vector<uint8_t> compressed_buffer;\n"
+        output += "    int max_compressed_size = LZ4_compressBound(static_cast<int>(uncompressed_buffer.size()));\n"
+        output += "    compressed_buffer.resize(max_compressed_size + 4); // +4 for uncompressed size\n\n"
+
+        output += "    // Write uncompressed size at the beginning\n"
+        output += "    uint32_t uncompressed_size = static_cast<uint32_t>(uncompressed_buffer.size());\n"
+        temp_size = write_uint_bytes("uncompressed_size", 4, endianness)
+        output += "    std::vector<uint8_t> size_bytes;\n"
+        output += temp_size.replace("buffer.push_back", "size_bytes.push_back")
+        output += "    std::memcpy(compressed_buffer.data(), size_bytes.data(), 4);\n\n"
+
+        output += "    // Compress the data\n"
+        output += "    int compressed_size = LZ4_compress_default(\n"
+        output += "        reinterpret_cast<const char*>(uncompressed_buffer.data()),\n"
+        output += "        reinterpret_cast<char*>(compressed_buffer.data() + 4),\n"
+        output += "        static_cast<int>(uncompressed_buffer.size()),\n"
+        output += "        max_compressed_size\n"
+        output += "    );\n\n"
+
+        output += "    if (compressed_size <= 0) {\n"
+        output += (
+            "        // Compression failed, return uncompressed data with size prefix\n"
+        )
+        output += "        compressed_buffer.resize(4 + uncompressed_buffer.size());\n"
+        output += "        std::memcpy(compressed_buffer.data() + 4, uncompressed_buffer.data(), uncompressed_buffer.size());\n"
+        output += "    } else {\n"
+        output += "        compressed_buffer.resize(4 + compressed_size);\n"
+        output += "    }\n\n"
+
+        output += "    return compressed_buffer;\n"
+    else:
+        output += "    return buffer;\n"
+
     output += "}\n\n"
     return output
 
 
 def generate_deserialize_impl(
-    msg_name: str, fields: list, endianness: str, structs: dict
+    msg_name: str,
+    fields: list,
+    endianness: str,
+    structs: dict,
+    compressed: bool = False,
 ) -> str:
     """Generate the deserialize method of a struct"""
     output = ""
@@ -628,16 +689,53 @@ def generate_deserialize_impl(
         f"{msg_name} {msg_name}::deserialize(const std::vector<uint8_t>& data) {{\n"
     )
     output += f"    {msg_name} msg;\n"
-    output += "    size_t offset = 0;\n\n"
 
-    output += "    // Skip message ID\n"
-    output += "    offset += 4;\n\n"
+    if compressed:
+        output += "    std::vector<uint8_t> decompressed_data;\n\n"
+        output += "    // Read uncompressed size\n"
+        output += "    uint32_t uncompressed_size = 0;\n"
+        output += "    size_t temp_offset = 0;\n"
+        temp_read = (
+            read_uint_bytes("uncompressed_size", 4, "uint32_t", endianness)
+            .replace("msg.", "")
+            .replace("offset", "temp_offset")
+        )
+        output += "    " + temp_read.replace("\n", "\n    ")
+        output += "\n"
+
+        output += "    // Decompress the data\n"
+        output += "    decompressed_data.resize(uncompressed_size);\n"
+        output += "    int decompressed_size = LZ4_decompress_safe(\n"
+        output += "        reinterpret_cast<const char*>(data.data() + 4),\n"
+        output += "        reinterpret_cast<char*>(decompressed_data.data()),\n"
+        output += "        static_cast<int>(data.size() - 4),\n"
+        output += "        static_cast<int>(uncompressed_size)\n"
+        output += "    );\n\n"
+
+        output += "    if (decompressed_size < 0) {\n"
+        output += "        // Decompression failed, assume data is uncompressed\n"
+        output += "        decompressed_data.assign(data.begin() + 4, data.end());\n"
+        output += "    }\n\n"
+
+        output += "    const std::vector<uint8_t>& actual_data = decompressed_data;\n"
+        output += "    size_t offset = 0;\n\n"
+
+        output += "    // Skip message ID\n"
+        output += "    offset += 4;\n\n"
+    else:
+        output += "    const std::vector<uint8_t>& actual_data = data;\n"
+        output += "    size_t offset = 0;\n\n"
+
+        output += "    // Skip message ID\n"
+        output += "    offset += 4;\n\n"
 
     for field in fields:
         field_name = field["name"]
         field_type = field["type"]
 
         output += f"    // Read {field_name}\n"
+
+        data_var = "actual_data" if compressed else "data"
 
         if field_type == "fixed_array":
             element_type = field["element_type"]
@@ -684,9 +782,7 @@ def generate_deserialize_impl(
                     sf_type = struct_field["type"]
 
                     if sf_type in ["uint8", "int8"]:
-                        output += (
-                            f"        msg.{field_name}[i].{sf_name} = data[offset];\n"
-                        )
+                        output += f"        msg.{field_name}[i].{sf_name} = {data_var}[offset];\n"
                         output += "        offset += 1;\n"
 
                     elif sf_type == "uint16":
@@ -747,12 +843,12 @@ def generate_deserialize_impl(
 
                     elif sf_type == "string":
                         max_len = struct_field["max_length"]
-                        output += f"        std::memcpy(msg.{field_name}[i].{sf_name}, data.data() + offset, {max_len});\n"
+                        output += f"        std::memcpy(msg.{field_name}[i].{sf_name}, {data_var}.data() + offset, {max_len});\n"
                         output += f"        offset += {max_len};\n"
 
             elif element_type in TYPE_MAP:
                 if element_type in ["uint8", "int8"]:
-                    output += f"        msg.{field_name}[i] = data[offset];\n"
+                    output += f"        msg.{field_name}[i] = {data_var}[offset];\n"
                     output += "        offset += 1;\n"
 
                 elif element_type == "uint16":
@@ -828,7 +924,7 @@ def generate_deserialize_impl(
                     sf_type = struct_field["type"]
 
                     if sf_type in ["uint8", "int8"]:
-                        output += f"        elem.{sf_name} = data[offset];\n"
+                        output += f"        elem.{sf_name} = {data_var}[offset];\n"
                         output += "        offset += 1;\n"
 
                     elif sf_type == "uint16":
@@ -901,12 +997,12 @@ def generate_deserialize_impl(
 
                     elif sf_type == "string":
                         max_len = struct_field["max_length"]
-                        output += f"        std::memcpy(elem.{sf_name}, data.data() + offset, {max_len});\n"
+                        output += f"        std::memcpy(elem.{sf_name}, {data_var}.data() + offset, {max_len});\n"
                         output += f"        offset += {max_len};\n"
 
             elif element_type in TYPE_MAP:
                 if element_type in ["uint8", "int8"]:
-                    output += "        elem = data[offset];\n"
+                    output += f"        elem = {data_var}[offset];\n"
                     output += "        offset += 1;\n"
 
                 elif element_type == "uint16":
@@ -962,7 +1058,7 @@ def generate_deserialize_impl(
                 output += "        " + temp_read.replace("\n", "\n        ")
                 output += "            elem.resize(str_len);\n"
                 output += "            for (uint32_t j = 0; j < str_len; ++j) {\n"
-                output += "                elem[j] = data[offset];\n"
+                output += f"                elem[j] = {data_var}[offset];\n"
                 output += "                offset += 1;\n"
                 output += "            }\n"
                 output += "        }\n"
@@ -971,13 +1067,11 @@ def generate_deserialize_impl(
 
         elif field_type == "string":
             max_len = field["max_length"]
-            output += (
-                f"    std::memcpy(msg.{field_name}, data.data() + offset, {max_len});\n"
-            )
+            output += f"    std::memcpy(msg.{field_name}, {data_var}.data() + offset, {max_len});\n"
             output += f"    offset += {max_len};\n"
 
         elif field_type in ["uint8", "int8"]:
-            output += f"    msg.{field_name} = data[offset];\n"
+            output += f"    msg.{field_name} = {data_var}[offset];\n"
             output += "    offset += 1;\n"
 
         elif field_type == "uint16":
@@ -1038,11 +1132,12 @@ def generate_source(protocol: dict, endianness: str) -> str:
     structs = protocol.get("structs", {})
 
     for msg_name, msg_data in protocol["messages"].items():
+        compressed = msg_data.get("compressed", False)
         output += generate_serialize_impl(
-            msg_name, msg_data["fields"], endianness, structs
+            msg_name, msg_data["fields"], endianness, structs, compressed
         )
         output += generate_deserialize_impl(
-            msg_name, msg_data["fields"], endianness, structs
+            msg_name, msg_data["fields"], endianness, structs, compressed
         )
 
     output += "}  // namespace net\n"
