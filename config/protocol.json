@@ -31,6 +31,13 @@
         { "name": "content", "type": "string", "max_length": 128 },
         { "name": "sender", "type": "string", "max_length": 32 }
       ]
+    },
+    "LARGE_DATA": {
+      "id": 20,
+      "compressed": true,
+      "fields": [
+        { "name": "data_content", "type": "string", "max_length": 2048 }
+      ]
     }
   }
 }

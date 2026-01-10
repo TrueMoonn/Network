@@ -22,8 +22,8 @@ if(ENABLE_NET_COVERAGE)
 endif()
 
 if (ENABLE_NET_TESTS)
-  enable_testing()
-  add_subdirectory(tests/unit_tests)
+    enable_testing()
+    add_subdirectory(tests/unit_tests)
 endif ()
 
 ########## PROTOCOL GENERATION ##########
@@ -82,7 +82,19 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(jsoncpp)
 
+########## LZ4 ##########
+set(LZ4_BUILD_CLI OFF CACHE BOOL "Build lz4 program" FORCE)
+set(LZ4_BUILD_LEGACY_LZ4C OFF CACHE BOOL "Build lz4c program with legacy argument support" FORCE)
+FetchContent_Declare(
+    lz4
+    GIT_REPOSITORY https://github.com/lz4/lz4.git
+    GIT_TAG v1.10.0
+    SOURCE_SUBDIR build/cmake
+)
+FetchContent_MakeAvailable(lz4)
+
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         jsoncpp_lib
+        lz4_static
 )
