@@ -359,7 +359,7 @@ def generate_serialize_impl(
         output += "    std::vector<uint8_t> buffer;\n\n"
 
     output += "    // Write message ID\n"
-    output += write_uint_bytes("ID", 4, endianness)
+    output += write_uint_bytes("ID", 1, endianness)
     output += "\n"
 
     for field in fields:
