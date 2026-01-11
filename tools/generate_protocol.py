@@ -727,7 +727,7 @@ def generate_deserialize_impl(
         output += "    size_t offset = 0;\n\n"
 
         output += "    // Skip message ID\n"
-        output += "    offset += 4;\n\n"
+        output += "    offset += 1;\n\n"
 
     for field in fields:
         field_name = field["name"]
