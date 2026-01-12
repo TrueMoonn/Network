@@ -2,6 +2,8 @@
 #include <string>
 #include <cstring>
 #include <ctime>
+#include <chrono>
+#include <iomanip>
 
 #ifdef _WIN32
     #include <windows.h>
@@ -98,14 +100,21 @@ bool Logger::write(const std::string& message) {
     if (!_active || !_logFile.is_open())
         return false;
 
-    std::time_t now = std::time(nullptr);
-    char timestamp[64];
-    std::strftime(timestamp,
-        sizeof(timestamp),
-        "%Y-%m-%d %H:%M:%S",
-        std::localtime(&now));
+    auto now = std::chrono::system_clock::now();
+    auto now_time_t = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()) % 1000;
 
-    _logFile << timestamp << " - " << message << std::endl;
+    thread_local char timestamp[32];
+        std::strftime(timestamp, sizeof(timestamp),
+        "%Y-%m-%d %H:%M:%S", std::localtime(&now_time_t));
+
+    _logFile << timestamp << '.'
+             << std::setfill('0') << std::setw(3) << ms.count()
+             << " - " << message << '\n';
+
+    _logFile.flush();
+
     return _logFile.good();
 }
 
