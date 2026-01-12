@@ -62,6 +62,7 @@ add_library( ${PROJECT_NAME} STATIC
     ${NET_SRC_DIR}/ProtocolManager.cpp
     ${NET_SRC_DIR}/Server.cpp
     ${NET_SRC_DIR}/Client.cpp
+    ${NET_SRC_DIR}/Logger.cpp
     ${GENERATED_SOURCE}  # Fichier généré
 )
 
