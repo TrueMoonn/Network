@@ -1,5 +1,3 @@
-#include "Network/Logger.hpp"
-
 #include <iostream>
 #include <string>
 #include <cstring>
@@ -14,18 +12,19 @@
     #include <cerrno>
 #endif
 
+#include "Network/Logger.hpp"
+
 namespace net {
 
 Logger::Logger(
-    bool active = true,
-    const std::string folderPath = "./")
-: _active(active), _folderPath(folderPath) {
-    if (directoryExists(_folderPath))
-        return;
-
-    if (!createDirectory(_folderPath))
-        throw std::runtime_error("Failed to create log directory: " +
-        _folderPath + " - " + getLastErrorMessage());
+    bool active,
+    const std::string& folderPath,
+    const std::string& filename) :
+    _active(active), _folderPath(folderPath) {
+    if (!directoryExists(_folderPath))
+        if (!createDirectory(_folderPath))
+            throw std::runtime_error("Failed to create log directory: " +
+            _folderPath + " - " + getLastErrorMessage());
 
     std::time_t now = std::time(nullptr);
     char timestamp[64];
@@ -35,7 +34,7 @@ Logger::Logger(
         std::localtime(&now));
 
     if (_active) {
-        _filePath = _folderPath + "/server-" + timestamp + ".log";
+        _filePath = _folderPath + "/" + filename + "-" + timestamp + ".log";
         _logFile.open(_filePath.c_str(), std::ios::app);
 
         if (!_logFile.is_open())
@@ -54,6 +53,10 @@ bool Logger::createDirectory(const std::string& path) {
 #else
     return mkdir(path.c_str(), 0755) == 0 || errno == EEXIST;
 #endif
+}
+
+void Logger::setActive(bool active) {
+    _active = active;
 }
 
 bool Logger::directoryExists(const std::string& path) {
