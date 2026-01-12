@@ -9,6 +9,7 @@
 
 #include "Network/Server.hpp"
 #include "Network/ProtocolManager.hpp"
+#include "Network/Logger.hpp"
 
 namespace net {
 
@@ -16,9 +17,10 @@ Server::Server(
     const std::string& protocol,
     uint16_t port,
     ProtocolManager protocolManager)
-    : _port(port), _running(false), _protocol(protocolManager) {
-
+    : _port(port), _running(false), _protocol(protocolManager),
+    _logger(true, "./logs", "server") {
     SocketType type;
+
     if (protocol == "TCP" || protocol == "tcp") {
         type = SocketType::TCP;
     } else if (protocol == "UDP" || protocol == "udp") {
@@ -38,7 +40,9 @@ Server::Server(
         server_pfd.revents = 0;
         _tcp_fds.push_back(server_pfd);
     }
+    _logger.write("Server initialized ready to listen");
 }
+
 Server::~Server() {
     stop();
 }
@@ -72,6 +76,11 @@ bool Server::start() {
             throw NetworkSocket::ListenFailed();
         }
     }
+
+    _logger.write("Server listening on port " +
+        std::to_string(_port) +
+        " using protocol " +
+        (_socket.getType() == SocketType::TCP ? "TCP" : "UDP"));
 
     _running = true;
     return true;
@@ -176,6 +185,14 @@ int Server::tcpSend(int dest, std::vector<uint8_t> data) {
     return static_cast<int>(totalSent);
 }
 
+std::string dataToString(std::vector<uint8_t> buff) {
+    std::string res;
+
+    for (auto& byte : buff)
+        res += std::to_string(byte) + " ";
+    return res;
+}
+
 std::vector<Address> Server::udpReceive(int timeout, int maxInputs) {
     std::vector<Address> results;
     if (!_running)
@@ -208,6 +225,13 @@ std::vector<Address> Server::udpReceive(int timeout, int maxInputs) {
             break;
 
         buffer.resize(received);
+
+        _logger.write(
+            sender.getIP() +
+            ":" +
+            std::to_string(sender.getPort()) +
+            "\t" +
+            dataToString(buffer));
 
         uint64_t currentTime = static_cast<uint64_t>(std::time(nullptr));
 
@@ -287,6 +311,11 @@ std::vector<int> Server::tcpReceive(int timeout) {
 
         int received = ::recv(client_fd, reinterpret_cast<char*>(buffer.data()),
                              static_cast<int>(bufsiz), 0);
+
+        _logger.write(
+            std::to_string(client_fd) +
+            "\t" +
+            dataToString(buffer));
 
         if (received == 0) {
             CLOSE_SOCKET(client_fd);

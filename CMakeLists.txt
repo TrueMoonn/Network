@@ -44,6 +44,7 @@ set(NETWORK_SOURCES
     ${NET_SRC_DIR}/ProtocolManager.cpp
     ${NET_SRC_DIR}/Server.cpp
     ${NET_SRC_DIR}/Client.cpp
+    ${NET_SRC_DIR}/Logger.cpp
 )
 
 if (EXISTS ${GENERATED_SOURCE})
