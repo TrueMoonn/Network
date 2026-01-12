@@ -6,8 +6,8 @@
 
 namespace net {
 
-NetworkSocket::NetworkSocket(SocketType socketType)
-    : _socket(INVALID_SOCKET_VALUE), _is_valid(false), _type(socketType) {
+NetworkSocket::NetworkSocket()
+    : _socket(INVALID_SOCKET_VALUE), _is_valid(false) {
     EnsureWinsockInitialized();
 }
 

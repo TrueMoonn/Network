@@ -26,9 +26,13 @@ class Server {
     /**
      * @brief Construct a new Server object
      *
-     * @param protocol Choose the communication type of your Server. Mode -> "UDP" or "TCP".
+     * @param port Port listenning
+     * @param protocol Choose the communication type of your Server.
+     *  Mode -> "UDP" or "TCP".
+     * @param path Path to the protocol.json containing the config
      */
-    explicit Server(const std::string&, uint16_t, ProtocolManager);
+    explicit Server(uint16_t port, const std::string& protocol = "UDP",
+        const std::string& path = "config/protocol.json");
 
     /**
      * @brief Destroy the Server object
@@ -56,7 +60,8 @@ class Server {
     /**
      * @brief Set the Server non-blocking
      * It will not wait packets before doing something
-     * @param enabled true if you wrant to set it non-blocking, false if you don't
+     * @param enabled true if you wrant to set it non-blocking,
+     *  false if you don't
      * @return true If succeed
      * @return false If failed (not connected to a Server)
      */
@@ -102,12 +107,14 @@ class Server {
      *
      * @param timeout Time to wait for receive
      * @param maxInputs Max input to get from clients before stop receiving
-     * @return std::vector<Address> Vector of Address from which data has been received
+     * @return std::vector<Address> Vector of Address from which data has been
+     *  received
      */
     std::vector<Address> udpReceive(int timeout, int maxInputs);
 
     /**
-     * @brief Extract packet from datas on ClientInfo->input and remove protocol informations (TCP mode)
+     * @brief Extract packet from datas on ClientInfo->input and remove
+     *  protocol informations (TCP mode)
      *
      * @param src Client's FD that you want to unpack datas
      * @param nbPackets Number of packets you want to extract
@@ -116,7 +123,8 @@ class Server {
     std::vector<std::vector<uint8_t>> unpack(int src, int nbPackets);
 
     /**
-     * @brief Extract packet from datas on ClientInfo->input and remove protocol informations (UDP mode)
+     * @brief Extract packet from datas on ClientInfo->input and remove
+     *  protocol informations (UDP mode)
      *
      * @param src Client's Address that you want to unpack datas
      * @param nbPackets Number of packets you want to extract

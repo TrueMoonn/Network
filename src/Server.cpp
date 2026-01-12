@@ -14,10 +14,11 @@
 namespace net {
 
 Server::Server(
-    const std::string& protocol,
-    uint16_t port,
-    ProtocolManager protocolManager)
-    : _port(port), _running(false), _protocol(protocolManager),
+    uint16_t port, const std::string& protocol, const std::string& path)
+    : _port(port),
+    _running(false),
+    _protocol(path),
+    _socket(),
     _logger(true, "./logs", "server") {
     SocketType type;
 
@@ -29,7 +30,6 @@ Server::Server(
         throw BadProtocol();
     }
 
-    _socket = NetworkSocket(type);
     if (!_socket.create(type))
         throw NetworkSocket::SocketCreationError();
 
