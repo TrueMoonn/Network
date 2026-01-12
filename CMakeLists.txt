@@ -9,6 +9,16 @@ set(NET_SRC_DIR "${PROJECT_SOURCE_DIR}/src")
 set(NET_HDR_DIR "${PROJECT_SOURCE_DIR}/include")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+########## GENERATED FILES ##########
+set(GENERATED_HEADER "${NET_HDR_DIR}/generated_messages.hpp")
+set(GENERATED_SOURCE "${NET_SRC_DIR}/generated_messages.cpp")
+
+set_source_files_properties(
+    ${GENERATED_HEADER}
+    ${GENERATED_SOURCE}
+    PROPERTIES GENERATED TRUE
+)
+
 ########## OPTIONS ##########
 option(ENABLE_NET_TESTS "Build tests along with the library" OFF)
 option(ENABLE_NET_COVERAGE "Enable coverage reporting" OFF)
@@ -26,50 +36,29 @@ if (ENABLE_NET_TESTS)
     add_subdirectory(tests/unit_tests)
 endif ()
 
-########## PROTOCOL GENERATION ##########
-# Chemins des fichiers générés
-set(GENERATED_HEADER "${NET_HDR_DIR}/Network/generated_messages.hpp")
-set(GENERATED_SOURCE "${NET_SRC_DIR}/generated_messages.cpp")
-set(PROTOCOL_JSON "${PROJECT_SOURCE_DIR}/config/protocol.json")
-set(GENERATOR_SCRIPT "${PROJECT_SOURCE_DIR}/tools/generate_protocol.py")
-
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-
-add_custom_command(
-    OUTPUT
-        ${GENERATED_HEADER}
-        ${GENERATED_SOURCE}
-    COMMAND ${Python3_EXECUTABLE} ${GENERATOR_SCRIPT} ${PROTOCOL_JSON}
-    DEPENDS
-        ${PROTOCOL_JSON}
-        ${GENERATOR_SCRIPT}
-    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-    COMMENT "Generating protocol messages from ${PROTOCOL_JSON}"
-    VERBATIM
-)
-
-add_custom_target(generate_protocol
-    DEPENDS
-        ${GENERATED_HEADER}
-        ${GENERATED_SOURCE}
-)
-
 ########## NETWORK ##########
-add_library( ${PROJECT_NAME} STATIC
+set(NETWORK_SOURCES
     ${NET_SRC_DIR}/NetworkSocket.cpp
     ${NET_SRC_DIR}/Address.cpp
     ${NET_SRC_DIR}/NetworkUtils.cpp
     ${NET_SRC_DIR}/ProtocolManager.cpp
     ${NET_SRC_DIR}/Server.cpp
     ${NET_SRC_DIR}/Client.cpp
-    ${GENERATED_SOURCE}  # Fichier généré
 )
 
-add_dependencies(${PROJECT_NAME} generate_protocol)
+if (EXISTS ${GENERATED_SOURCE})
+    list(APPEND NETWORK_SOURCES ${GENERATED_SOURCE})
+endif()
+
+add_library( ${PROJECT_NAME} STATIC ${NETWORK_SOURCES})
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC
         ${NET_HDR_DIR}
+)
+
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    OBJECT_DEPENDS "${GENERATED_HEADER};${GENERATED_SOURCE}"
 )
 
 ########## JSONCPP ##########
@@ -82,19 +71,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(jsoncpp)
 
-########## LZ4 ##########
-set(LZ4_BUILD_CLI OFF CACHE BOOL "Build lz4 program" FORCE)
-set(LZ4_BUILD_LEGACY_LZ4C OFF CACHE BOOL "Build lz4c program with legacy argument support" FORCE)
-FetchContent_Declare(
-    lz4
-    GIT_REPOSITORY https://github.com/lz4/lz4.git
-    GIT_TAG v1.10.0
-    SOURCE_SUBDIR build/cmake
-)
-FetchContent_MakeAvailable(lz4)
-
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         jsoncpp_lib
-        lz4_static
 )
