@@ -15,5 +15,29 @@
   "end_of_packet": {
     "active": true,
     "characters": "\r\n"
+  },
+  "messages": {
+    "LOGIN_REQUEST": {
+      "id": 1,
+      "fields": [
+        { "name": "username", "type": "string", "max_length": 32 },
+        { "name": "password", "type": "string", "max_length": 64 },
+        { "name": "client_version", "type": "uint16" }
+      ]
+    },
+    "CHAT_MESSAGE": {
+      "id": 10,
+      "fields": [
+        { "name": "content", "type": "string", "max_length": 128 },
+        { "name": "sender", "type": "string", "max_length": 32 }
+      ]
+    },
+    "LARGE_DATA": {
+      "id": 20,
+      "compressed": true,
+      "fields": [
+        { "name": "data_content", "type": "string", "max_length": 2048 }
+      ]
+    }
   }
 }
