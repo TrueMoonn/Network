@@ -18,7 +18,7 @@ Server::Server(
     uint16_t port,
     ProtocolManager protocolManager)
     : _port(port), _running(false), _protocol(protocolManager),
-    _logger(true, "./logs") {
+    _logger(true, "./logs", "server") {
     SocketType type;
 
     if (protocol == "TCP" || protocol == "tcp") {
@@ -40,9 +40,9 @@ Server::Server(
         server_pfd.revents = 0;
         _tcp_fds.push_back(server_pfd);
     }
-    _logger.write("Server listening on port " + std::to_string(_port) +
-        " using protocol " + protocol);
+    _logger.write("Server initialized ready to listen");
 }
+
 Server::~Server() {
     stop();
 }
