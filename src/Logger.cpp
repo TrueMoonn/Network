@@ -27,8 +27,15 @@ Logger::Logger(
         throw std::runtime_error("Failed to create log directory: " +
         _folderPath + " - " + getLastErrorMessage());
 
+    std::time_t now = std::time(nullptr);
+    char timestamp[64];
+    std::strftime(timestamp,
+        sizeof(timestamp),
+        "%Y-%m-%d",
+        std::localtime(&now));
+
     if (_active) {
-        _filePath = _folderPath + "/server.log";
+        _filePath = _folderPath + "/server-" + timestamp + ".log";
         _logFile.open(_filePath.c_str(), std::ios::app);
 
         if (!_logFile.is_open())
