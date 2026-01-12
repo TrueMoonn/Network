@@ -9,6 +9,7 @@
 #include "Network/Address.hpp"
 #include "Network/NetworkSocket.hpp"
 #include "Network/ProtocolManager.hpp"
+#include "Network/Logger.hpp"
 
 #define CAST_UINT32 static_cast<uint32_t>
 
@@ -228,6 +229,7 @@ class Server {
     bool _running;
 
     ProtocolManager _protocol;
+    Logger _logger;
 
     std::vector<POLLFD> _tcp_fds;
 
