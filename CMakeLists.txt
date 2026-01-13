@@ -72,7 +72,33 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(jsoncpp)
 
+########## LZ4 ##########
+FetchContent_Declare(
+    lz4
+    GIT_REPOSITORY https://github.com/lz4/lz4.git
+    GIT_TAG v1.9.4
+)
+FetchContent_MakeAvailable(lz4)
+
+if(NOT TARGET lz4_static)
+    add_library(lz4_static STATIC
+        ${lz4_SOURCE_DIR}/lib/lz4.c
+        ${lz4_SOURCE_DIR}/lib/lz4hc.c
+        ${lz4_SOURCE_DIR}/lib/lz4frame.c
+        ${lz4_SOURCE_DIR}/lib/xxhash.c
+)
+
+target_include_directories(lz4_static PUBLIC
+    ${lz4_SOURCE_DIR}/lib
+)
+
+set_target_properties(lz4_static PROPERTIES
+    C_STANDARD 99
+    POSITION_INDEPENDENT_CODE ON
+)
+
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         jsoncpp_lib
+        lz4_static
 )
