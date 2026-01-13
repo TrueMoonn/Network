@@ -87,6 +87,7 @@ if(NOT TARGET lz4_static)
         ${lz4_SOURCE_DIR}/lib/lz4frame.c
         ${lz4_SOURCE_DIR}/lib/xxhash.c
 )
+endif()
 
 target_include_directories(lz4_static PUBLIC
     ${lz4_SOURCE_DIR}/lib
