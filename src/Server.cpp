@@ -40,6 +40,7 @@ Server::Server(
         server_pfd.revents = 0;
         _tcp_fds.push_back(server_pfd);
     }
+    _logger.write("==============================");
     _logger.write("Server initialized ready to listen");
 }
 
@@ -97,6 +98,8 @@ void Server::stop() {
     if (_socket.isValid())
         _socket.close();
     _running = false;
+    _logger.write("Server stopped");
+    _logger.write("==============================");
 }
 
 int Server::acceptClient(Address& client_addr, uint64_t currentTime) {
@@ -147,6 +150,14 @@ int Server::udpSend(const Address& dest, std::vector<uint8_t> data) {
 
     std::vector<uint8_t> fullPacket = _protocol.formatPacket(data);
 
+    _logger.write(
+        "SEND\t" +
+        dest.getIP() +
+        ":" +
+        std::to_string(dest.getPort()) +
+        "\t" +
+        dataToString(fullPacket));
+
     int sent = _socket.sendTo(fullPacket.data(), fullPacket.size(), dest);
 
     if (sent < 0)
@@ -171,6 +182,12 @@ int Server::tcpSend(int dest, std::vector<uint8_t> data) {
         throw UnknownAddressOrFd();
 
     std::vector<uint8_t> fullPacket = _protocol.formatPacket(data);
+
+    _logger.write(
+        "SEND\t" +
+        std::to_string(dest) +
+        "\t" +
+        dataToString(fullPacket));
 
     size_t totalSent = 0;
     while (totalSent < fullPacket.size()) {
@@ -227,6 +244,7 @@ std::vector<Address> Server::udpReceive(int timeout, int maxInputs) {
         buffer.resize(received);
 
         _logger.write(
+            "RECV\t" +
             sender.getIP() +
             ":" +
             std::to_string(sender.getPort()) +
