@@ -68,12 +68,14 @@ bool Server::start() {
 
     if (!_socket.bind(_port)) {
         _socket.close();
+        _logger.write("ERROR\tSocket binding failed");
         throw NetworkSocket::BindFailed();
     }
 
     if (_socket.getType() == SocketType::TCP) {
         if (!_socket.listen(10)) {
             _socket.close();
+            _logger.write("ERROR\tListen failed");
             throw NetworkSocket::ListenFailed();
         }
     }
@@ -103,18 +105,26 @@ void Server::stop() {
 }
 
 int Server::acceptClient(Address& client_addr, uint64_t currentTime) {
-    if (_socket.getType() != SocketType::TCP)
+    if (_socket.getType() != SocketType::TCP) {
+        _logger.write("ERROR\tTried an accept when using UDP mode");
         throw NetworkSocket::InvalidSocketType(
             "acceptClient() is only for TCP mode");
+    }
 
-    if (!_running)
+    if (!_running) {
+        _logger.write("ERROR\tCannnot accept before starting server");
         throw ServerNotStarted();
-    if (!_socket.isValid())
+    }
+    if (!_socket.isValid()) {
+        _logger.write("ERROR\tCannot accept with no socket created");
         throw NetworkSocket::SocketNotCreated();
+    }
 
     int client_fd = _socket.accept(client_addr);
-    if (client_fd < 0)
-            throw NetworkSocket::AcceptFailed();
+    if (client_fd < 0) {
+        _logger.write("ERROR\tAccept error (fd < 0)");
+        throw NetworkSocket::AcceptFailed();
+    }
 
     ClientInfo newClient;
     newClient.lastPacketTime = currentTime;
@@ -132,21 +142,39 @@ int Server::acceptClient(Address& client_addr, uint64_t currentTime) {
     return client_fd;
 }
 
+std::string dataToString(std::vector<uint8_t> buff) {
+    std::string res;
+
+    for (auto& byte : buff)
+        res += std::to_string(byte) + " ";
+    return res;
+}
+
 int Server::udpSend(const Address& dest, std::vector<uint8_t> data) {
-    if (!_running)
+    if (!_running) {
+        _logger.write("ERROR\tCannot send before starting server");
         throw ServerNotStarted();
-    if (!_socket.isValid())
+    }
+    if (!_socket.isValid()) {
+        _logger.write("ERROR\tCannot send before setting socket");
         throw NetworkSocket::SocketNotCreated();
-    if (_socket.getType() == SocketType::TCP)
+    }
+    if (_socket.getType() == SocketType::TCP) {
+        _logger.write("ERROR\tCannot send in UDP mode when socket is TCP");
         throw NetworkSocket::InvalidSocketType(
             "Socket type is TCP, udpSend() is for UDP only");
+    }
 
-    if (data.empty())
+    if (data.empty()) {
+        _logger.write("ERROR\tCannot send empty packet");
         throw BadData();
+    }
 
     auto it = _udp_clients.find(dest);
-    if (it == _udp_clients.end())
+    if (it == _udp_clients.end()) {
+        _logger.write("ERROR\tUnknown address given to send");
         throw UnknownAddressOrFd();
+    }
 
     std::vector<uint8_t> fullPacket = _protocol.formatPacket(data);
 
@@ -160,26 +188,38 @@ int Server::udpSend(const Address& dest, std::vector<uint8_t> data) {
 
     int sent = _socket.sendTo(fullPacket.data(), fullPacket.size(), dest);
 
-    if (sent < 0)
+    if (sent < 0) {
+        _logger.write("ERROR\tFailed to send data to given dest");
         throw NetworkSocket::DataSendFailed();
+    }
     return sent;
 }
 
 int Server::tcpSend(int dest, std::vector<uint8_t> data) {
-    if (!_running)
+    if (!_running) {
+        _logger.write("ERROR\tCannot send before starting server");
         throw ServerNotStarted();
-    if (!_socket.isValid())
+    }
+    if (!_socket.isValid()) {
+        _logger.write("ERROR\tCannot send before setting socket");
         throw NetworkSocket::SocketNotCreated();
-    if (_socket.getType() == SocketType::UDP)
+    }
+    if (_socket.getType() == SocketType::UDP) {
+        _logger.write("ERROR\tCannot send in TCP mode when socket is UDP");
         throw NetworkSocket::InvalidSocketType(
             "Socket type is UDP, tcpSend() is for UDP only");
+    }
 
-    if (data.empty())
+    if (data.empty()) {
+        _logger.write("ERROR\tCannot send empty packet");
         throw BadData();
+    }
 
     auto it = _tcp_clients.find(dest);
-    if (it == _tcp_clients.end())
+    if (it == _tcp_clients.end()) {
+        _logger.write("ERROR\tUnknown address given to send");
         throw UnknownAddressOrFd();
+    }
 
     std::vector<uint8_t> fullPacket = _protocol.formatPacket(data);
 
@@ -193,32 +233,30 @@ int Server::tcpSend(int dest, std::vector<uint8_t> data) {
     while (totalSent < fullPacket.size()) {
         int sent = ::send(dest, reinterpret_cast<const char*>(fullPacket.data()
             + totalSent), static_cast<int>(fullPacket.size() - totalSent), 0);
-        if (sent == SOCKET_ERROR_VALUE)
+        if (sent == SOCKET_ERROR_VALUE || sent == 0) {
+            _logger.write("ERROR\tFailed to send data to given dest");
             throw NetworkSocket::DataSendFailed();
-        if (sent == 0)
-            throw NetworkSocket::DataSendFailed();
+        }
         totalSent += sent;
     }
     return static_cast<int>(totalSent);
 }
 
-std::string dataToString(std::vector<uint8_t> buff) {
-    std::string res;
-
-    for (auto& byte : buff)
-        res += std::to_string(byte) + " ";
-    return res;
-}
-
 std::vector<Address> Server::udpReceive(int timeout, int maxInputs) {
     std::vector<Address> results;
-    if (!_running)
+    if (!_running) {
+        _logger.write("ERROR\tCannot send before starting server");
         throw ServerNotStarted();
-    if (!_socket.isValid())
+    }
+    if (!_socket.isValid()) {
+        _logger.write("ERROR\tCannot send before setting socket");
         throw NetworkSocket::SocketNotCreated();
-    if (_socket.getType() == SocketType::TCP)
+    }
+    if (_socket.getType() == SocketType::TCP) {
+        _logger.write("ERROR\tCannot receive in UDP mode when socket is TCP");
         throw NetworkSocket::InvalidSocketType(
             "Socket type is TCP, udpReceive() is for UDP only");
+    }
 
     POLLFD pfd;
     pfd.fd = _socket.getSocket();
@@ -275,27 +313,37 @@ std::vector<Address> Server::udpReceive(int timeout, int maxInputs) {
 std::vector<int> Server::tcpReceive(int timeout) {
     std::vector<int> results;
 
-    if (!_running)
+    if (!_running) {
+        _logger.write("ERROR\tCannot send before starting server");
         throw ServerNotStarted();
-    if (!_socket.isValid())
+    }
+    if (!_socket.isValid()) {
+        _logger.write("ERROR\tCannot send before setting socket");
         throw NetworkSocket::SocketNotCreated();
-    if (_tcp_fds.empty())
+    }
+    if (_tcp_fds.empty()) {
+        _logger.write("ERROR\tCannot send before setting socket");
         throw NoTcpSocket();
-    if (_socket.getType() == SocketType::UDP)
+    }
+    if (_socket.getType() == SocketType::UDP) {
+        _logger.write("ERROR\tCannot receive in TCP mode when socket is UDP");
         throw NetworkSocket::InvalidSocketType(
             "Socket type is UDP, tcpReceive() is for TCP only");
+    }
 
     for (auto& pfd : _tcp_fds)
         pfd.revents = 0;
 
 #ifdef _WIN32
     int poll_result = PollSockets(_tcp_fds.data(),
-                                  static_cast<ULONG>(_tcp_fds.size()), timeout);
+        static_cast<ULONG>(_tcp_fds.size()), timeout);
 #else
     int poll_result = PollSockets(_tcp_fds.data(), _tcp_fds.size(), timeout);
 #endif
-    if (poll_result < 0)
+    if (poll_result < 0) {
+        _logger.write("ERROR\tPoll error in TCP receive");
         throw PollError();
+    }
     if (poll_result == 0)
         return results;
 
@@ -331,6 +379,7 @@ std::vector<int> Server::tcpReceive(int timeout) {
                              static_cast<int>(bufsiz), 0);
 
         _logger.write(
+            "RECV\t" +
             std::to_string(client_fd) +
             "\t" +
             dataToString(buffer));
@@ -480,6 +529,7 @@ std::vector<std::vector<uint8_t>> Server::getDataFromBuffer(
             client.input.erase(client.input.begin(),
                     client.input.begin() + dataEnd + endMarker.size());
         } else {
+            _logger.write("ERROR\tData unpacking error, probably bad format");
             throw BadData();
         }
     }
@@ -489,8 +539,10 @@ std::vector<std::vector<uint8_t>> Server::getDataFromBuffer(
 
 std::vector<std::vector<uint8_t>> Server::unpack(int src, int nbPackets) {
     auto it = _tcp_clients.find(src);
-    if (it == _tcp_clients.end())
+    if (it == _tcp_clients.end()) {
+        _logger.write("ERROR\tUnknown fd given to unpack data");
         throw UnknownAddressOrFd();
+    }
 
     ClientInfo& client = it->second;
 
@@ -500,8 +552,10 @@ std::vector<std::vector<uint8_t>> Server::unpack(int src, int nbPackets) {
 std::vector<std::vector<uint8_t>> Server::unpack(
         const Address& src, int nbPackets) {
     auto it = _udp_clients.find(src);
-    if (it == _udp_clients.end())
+    if (it == _udp_clients.end()) {
+        _logger.write("ERROR\tUnknown address given to unpack data");
         throw UnknownAddressOrFd();
+    }
 
     ClientInfo& client = it->second;
 
