@@ -90,6 +90,9 @@ bool Server::start() {
 }
 
 void Server::stop() {
+    if (!_running)
+        return;
+
     for (size_t i = 1; i < _tcp_fds.size(); ++i) {
         CLOSE_SOCKET(static_cast<SocketHandle>(_tcp_fds[i].fd));
     }
