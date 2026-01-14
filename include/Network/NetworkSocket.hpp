@@ -18,9 +18,8 @@ class NetworkSocket {
  public:
     /**
      * @brief Constructs a NetworkSocket object
-     * @param type The type of socket (UDP or TCP) Default is UDP
      */
-    explicit NetworkSocket(SocketType type = SocketType::UDP);
+    explicit NetworkSocket();
 
     /**
      * @brief Destructor for NetworkSocket

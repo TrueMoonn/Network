@@ -8,11 +8,11 @@
 
 namespace net {
 
-Client::Client(const std::string& protocol)
+Client::Client(const std::string& protocol, const std::string& path)
     : _socket(),
     _server_address(),
     _connected(false),
-    _protocol("config/protocol.json") {
+    _protocol(path) {
     SocketType type;
 
     if (protocol == "TCP" || protocol == "tcp") {
@@ -45,7 +45,7 @@ bool Client::connect(const std::string& server_ip,
 
     _server_address = Address(server_ip, server_port);
 
-    if (_socket.getType() == SocketType::TCP) {
+    if (getProtocol() == SocketType::TCP) {
         if (!_socket.connect(_server_address)) {
             std::cerr << "Failed to connect to TCP server" << std::endl;
             return false;

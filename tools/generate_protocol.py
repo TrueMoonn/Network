@@ -154,7 +154,32 @@ def validate_structs(protocol: dict) -> bool:
 
             field_type = field["type"]
 
-            if field_type not in TYPE_MAP and field_type != "string":
+            if field_type == "fixed_array":
+                if "element_type" not in field:
+                    print(
+                        f"Error: fixed_array missing 'element_type' in struct '{struct_name}'"
+                    )
+                    return False
+                if (
+                    "max_size" not in field
+                    or not isinstance(field["max_size"], int)
+                    or field["max_size"] <= 0
+                ):
+                    print(
+                        f"Error: fixed_array missing or invalid 'max_size' in struct '{struct_name}'"
+                    )
+                    return False
+                element_type = field["element_type"]
+                if (
+                    element_type not in TYPE_MAP
+                    and element_type != "string"
+                    and element_type not in structs
+                ):
+                    print(
+                        f"Error: Unknown element_type '{element_type}' for fixed_array in struct '{struct_name}'"
+                    )
+                    return False
+            elif field_type not in TYPE_MAP and field_type != "string":
                 print(f"Error: Unknown type '{field_type}' in struct '{struct_name}'")
                 return False
 
@@ -186,7 +211,9 @@ def get_endianness(protocol: dict) -> str:
     return endianness
 
 
-def generate_struct_definition(struct_name: str, struct_data: dict) -> str:
+def generate_struct_definition(
+    struct_name: str, struct_data: dict, structs: dict = {}
+) -> str:
     """Generate a data structure, not a structure of a packet"""
     output = ""
 
@@ -198,6 +225,18 @@ def generate_struct_definition(struct_name: str, struct_data: dict) -> str:
 
         if field_type == "string":
             output += f"    char {field_name}[{field['max_length']}];\n"
+        elif field_type == "fixed_array":
+            element_type = field["element_type"]
+            max_size = field["max_size"]
+
+            if element_type in TYPE_MAP:
+                cpp_type = TYPE_MAP[element_type]
+            elif element_type in structs:
+                cpp_type = element_type
+            else:
+                cpp_type = "uint8_t"  # Fallback
+
+            output += f"    {cpp_type} {field_name}[{max_size}];\n"
         else:
             output += f"    {TYPE_MAP[field_type]} {field_name};\n"
 
@@ -289,7 +328,9 @@ def generate_header(protocol: dict) -> str:
     if "structs" in protocol:
         output += "// ===== Structs =====\n\n"
         for struct_name, struct_data in protocol["structs"].items():
-            output += generate_struct_definition(struct_name, struct_data)
+            output += generate_struct_definition(
+                struct_name, struct_data, protocol["structs"]
+            )
 
     output += "// ===== Messages =====\n\n"
     structs = protocol.get("structs", {})
