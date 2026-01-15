@@ -7,6 +7,7 @@
 #include "Network/NetworkSocket.hpp"
 #include "Network/ProtocolManager.hpp"
 #include "Network/PacketSerializer.hpp"
+#include "Network/Logger.hpp"
 
 #define CAST_UINT32 static_cast<uint32_t>
 
@@ -160,6 +161,7 @@ class Client {
     Address _server_address;
     bool _connected;
     ProtocolManager _protocol;
+    Logger _logger;
 
     std::vector<uint8_t> _input_buffer;
 };

@@ -12,7 +12,8 @@ Client::Client(const std::string& protocol, const std::string& path)
     : _socket(),
     _server_address(),
     _connected(false),
-    _protocol(path) {
+    _protocol(path),
+    _logger(true, "./logs", "client") {
     SocketType type;
 
     if (protocol == "TCP" || protocol == "tcp") {
@@ -25,21 +26,29 @@ Client::Client(const std::string& protocol, const std::string& path)
                   << ", Defaulting to UDP"
                   << std::endl;
         type = SocketType::UDP;
+        _logger.write("Invalid protocol given (" +
+            protocol + "): defaulting to UDP");
     }
 
     if (!_socket.create(type)) {
         std::cerr << "Failed to create socket in constructor" << std::endl;
+        _logger.write("Failed to create socket in Client() constructor");
+        return;
     }
+    _logger.write("==============================");
+    _logger.write("Client initialized ready to connect");
 }
 
 Client::~Client() {
     disconnect();
+    _logger.write("==============================");
 }
 
 bool Client::connect(const std::string& server_ip,
     uint16_t server_port) {
     if (_connected) {
         std::cerr << "Client is already connected" << std::endl;
+        _logger.write("ERROR\tClient is already connected");
         return false;
     }
 
@@ -48,6 +57,7 @@ bool Client::connect(const std::string& server_ip,
     if (getProtocol() == SocketType::TCP) {
         if (!_socket.connect(_server_address)) {
             std::cerr << "Failed to connect to TCP server" << std::endl;
+            _logger.write("ERROR\tFailed to connect to server using TCP");
             return false;
         }
     }
@@ -59,38 +69,66 @@ bool Client::connect(const std::string& server_ip,
               << ":"
               << server_port
               << std::endl;
+    _logger.write("Client connected to " + server_ip + ":" +
+        std::to_string(server_port));
 
     return true;
 }
 
 void Client::disconnect() {
-    if (_socket.isValid()) {
-        _socket.close();
+    if (!_connected) {
+        _logger.write("WARNING\tClient is already disconnected");
+        return;
     }
+    if (_socket.isValid())
+        _socket.close();
     _connected = false;
     std::cout << "Client disconnected" << std::endl;
+    _logger.write("Client disconnected");
+}
+
+std::string dataToString(std::vector<uint8_t> buff) {
+    std::string res;
+
+    for (auto& byte : buff)
+        res += std::to_string(byte) + " ";
+    return res;
 }
 
 bool Client::send(const std::vector<uint8_t>& data) {
-    if (!_connected || !_socket.isValid()) {
-        std::cerr << "Client is not connected or socket is invalid"
-                  << std::endl;
+    if (!_connected) {
+        std::cerr << "Client is not connected" << std::endl;
+        _logger.write("ERROR\tTried to send data before connecting the client");
+        return false;
+    }
+    if (!_socket.isValid()) {
+        std::cerr << "Socket is invalid" << std::endl;
+        _logger.write("ERROR\tTried to send data before setting the socket");
         return false;
     }
 
     if (data.empty()) {
-        std::cerr << "Invalid data or size"
-                  << std::endl;
+        std::cerr << "Invalid data or size" << std::endl;
+        _logger.write("ERROR\tTried to send unvalid data");
         return false;
     }
 
     std::vector<uint8_t> fullPacket = _protocol.formatPacket(data);
+
+    _logger.write(
+        "SEND\t" +
+        _server_address.getIP() +
+        ":" +
+        std::to_string(_server_address.getPort()) +
+        "\t" +
+        dataToString(fullPacket));
 
     if (_socket.getType() == SocketType::UDP) {
         int sent = _socket.sendTo(fullPacket.data(), fullPacket.size(),
             _server_address);
         if (sent < 0) {
             std::cerr << "Failed to send data" << std::endl;
+            _logger.write("ERROR\tFailed to send data");
             return false;
         }
         if (static_cast<size_t>(sent) != fullPacket.size()) {
@@ -101,6 +139,7 @@ bool Client::send(const std::vector<uint8_t>& data) {
                 << fullPacket.size()
                 << " bytes"
                 << std::endl;
+            _logger.write("WARNING\tPartial send of data");
             return false;
         }
     } else {
@@ -110,11 +149,13 @@ bool Client::send(const std::vector<uint8_t>& data) {
                 fullPacket.size() - totalSent);
             if (sent < 0) {
                 std::cerr << "Failed to send data" << std::endl;
+                _logger.write("ERROR\tFailed to send data");
                 return false;
             }
             if (sent == 0) {
                 std::cerr << "Connection closed by peer during send"
                     << std::endl;
+                _logger.write("ERROR\tTCP connection closed during send");
                 return false;
             }
             totalSent += sent;
@@ -125,14 +166,22 @@ bool Client::send(const std::vector<uint8_t>& data) {
 }
 
 int Client::receive(void* buffer, size_t max_size) {
-    if (!_connected || !_socket.isValid()) {
-        std::cerr << "Client is not connected or socket is invalid"
-                  << std::endl;
+    if (!_connected) {
+        std::cerr << "Client is not connected" << std::endl;
+        _logger.write(
+            "ERROR\tTried to receive data before connecting the client");
+        return -1;
+    }
+    if (!_socket.isValid()) {
+        std::cerr << "Socket is invalid" << std::endl;
+        _logger.write(
+            "ERROR\tTried to receive data before setting the socket");
         return -1;
     }
 
     if (buffer == nullptr || max_size == 0) {
         std::cerr << "Invalid buffer or size" << std::endl;
+        _logger.write("ERROR\tInvalid buffer or size to receive");
         return -1;
     }
 
@@ -150,25 +199,38 @@ int Client::receive(void* buffer, size_t max_size) {
                       << ":"
                       << sender.getPort()
                       << std::endl;
+            _logger.write("ERROR\tPacket received from unexpected source : " +
+                sender.getIP() + ":" + std::to_string(sender.getPort()));
             return -2;
         }
     } else {
         received = _socket.recv(tempBuffer.data(), tempBufferSize);
         if (received == 0) {
             std::cerr << "Server closed connection"
-                      << std::endl;
+                << std::endl;
+            _logger.write("ERROR\tServer closed connection");
             _connected = false;
             return 0;
         }
     }
 
     if (received < 0) {
+        _logger.write("ERROR\tFailed to receive data (receive < 0)");
         std::cerr << "Failed to receive data" << std::endl;
         return -1;
     }
 
     try {
         tempBuffer.resize(received);
+
+        _logger.write(
+            "RECV\t" +
+            _server_address.getIP() +
+            ":" +
+            std::to_string(_server_address.getPort()) +
+            "\t" +
+            dataToString(tempBuffer));
+
         ProtocolManager::UnformattedPacket unformatted =
             _protocol.unformatPacket(tempBuffer);
         size_t dataToCopy = std::min(unformatted.data.size(), max_size);
@@ -184,26 +246,39 @@ int Client::receive(void* buffer, size_t max_size) {
         return static_cast<int>(dataToCopy);
     } catch (const std::exception& e) {
         std::cerr << "Failed to unformat packet: " << e.what() << std::endl;
+        _logger.write("ERROR\tFailed to unformat packet : " +
+            std::string(e.what()));
         return -1;
     }
 }
 
 bool Client::setNonBlocking(bool enabled) {
-    if (!_socket.isValid())
+    if (!_socket.isValid()) {
+        _logger.write("ERROR\tCannot set socket.nonblocking of invalid socket");
         return false;
+    }
     return _socket.setNonBlocking(enabled);
 }
 
 bool Client::setTimeout(int milliseconds) {
-    if (!_socket.isValid())
+    if (!_socket.isValid()) {
+        _logger.write("ERROR\tCannot set socket.timeout of invalid socket");
         return false;
+    }
     return _socket.setTimeout(milliseconds);
 }
 
 void Client::udpReceive(int timeout, int maxInputs) {
-    if (!_connected || !_socket.isValid()) {
-        std::cerr << "Client is not connected or socket is invalid"
-            << std::endl;
+    if (!_connected) {
+        std::cerr << "Client is not connected" << std::endl;
+        _logger.write(
+            "ERROR\tTried to receive data before connecting the client");
+        return;
+    }
+    if (!_socket.isValid()) {
+        std::cerr << "Socket is invalid" << std::endl;
+        _logger.write(
+            "ERROR\tTried to receive data before setting the socket");
         return;
     }
 
@@ -215,6 +290,7 @@ void Client::udpReceive(int timeout, int maxInputs) {
     int poll_result = PollSockets(&pfd, 1, timeout);
     if (poll_result < 0) {
         std::cerr << "Poll error in udpReceive()" << std::endl;
+        _logger.write("ERROR\tPoll error in receive");
         return;
     }
     if (poll_result == 0) {
@@ -229,28 +305,46 @@ void Client::udpReceive(int timeout, int maxInputs) {
 
         int received =
             _socket.receiveFrom(tempBuffer.data(), bufferSize, sender);
-        if (received <= 0) {
+
+        if (received <= 0)
             break;
-        }
 
         if (!(sender == _server_address)) {
             std::cerr <<
                 "Warning: Received UDP packet from unexpected source: "
                 << sender.getIP() << ":" << sender.getPort() << std::endl;
+            _logger.write("ERROR\tPacket received from unexpected source : " +
+                sender.getIP() + ":" + std::to_string(sender.getPort()));
             continue;
         }
 
         std::vector<uint8_t> packetData(tempBuffer.begin(),
                                         tempBuffer.begin() + received);
+
+        _logger.write(
+            "RECV\t" +
+            _server_address.getIP() +
+            ":" +
+            std::to_string(_server_address.getPort()) +
+            "\t" +
+            dataToString(packetData));
+
         _input_buffer.insert(_input_buffer.end(),
                             packetData.begin(), packetData.end());
     }
 }
 
 void Client::tcpReceive(int timeout) {
-    if (!_connected || !_socket.isValid()) {
-        std::cerr << "Client is not connected or socket is invalid"
-            << std::endl;
+    if (!_connected) {
+        std::cerr << "Client is not connected" << std::endl;
+        _logger.write(
+            "ERROR\tTried to receive data before connecting the client");
+        return;
+    }
+    if (!_socket.isValid()) {
+        std::cerr << "Socket is invalid" << std::endl;
+        _logger.write(
+            "ERROR\tTried to receive data before setting the socket");
         return;
     }
 
@@ -262,6 +356,7 @@ void Client::tcpReceive(int timeout) {
     int poll_result = PollSockets(&pfd, 1, timeout);
     if (poll_result < 0) {
         std::cerr << "Poll error in tcpReceive()" << std::endl;
+        _logger.write("ERROR\tPoll error in receive");
         return;
     }
     if (poll_result == 0) {
@@ -281,12 +376,23 @@ void Client::tcpReceive(int timeout) {
         if (received == 0) {
             std::cerr << "Server closed connection" << std::endl;
             _connected = false;
+            _logger.write("ERROR\tServer force closed connection");
             break;
         }
 
         if (received < 0) {
             break;
         }
+
+        tempBuffer.resize(received);
+
+        _logger.write(
+            "RECV\t" +
+            _server_address.getIP() +
+            ":" +
+            std::to_string(_server_address.getPort()) +
+            "\t" +
+            dataToString(tempBuffer));
 
         _input_buffer.insert(_input_buffer.end(),
                             tempBuffer.begin(),
