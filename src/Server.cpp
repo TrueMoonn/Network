@@ -48,6 +48,40 @@ Server::~Server() {
     stop();
 }
 
+std::size_t Server::evalBandwidthUsage() {
+    auto now = std::chrono::system_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now - _lastBandWidthCheck);
+
+    double elapsedSeconds = elapsed.count() / 1000.0;
+
+    std::size_t oldBytesOutPerSecond = _bytesOutPerSecond;
+    std::size_t oldBytesInPerSecond = _bytesInPerSecond;
+
+    if (elapsedSeconds > 0.0) {
+        _bytesOutPerSecond =
+            static_cast<std::size_t>(_bytesOut / elapsedSeconds);
+        _bytesInPerSecond =
+            static_cast<std::size_t>(_bytesIn / elapsedSeconds);
+    }
+
+    _bytesOut = 0;
+    _bytesIn = 0;
+    _lastBandWidthCheck = now;
+    if (oldBytesInPerSecond != _bytesInPerSecond ||
+        oldBytesOutPerSecond != _bytesOutPerSecond
+    ) {
+        _logger.write(
+            "BAND\tIN: " +
+            std::to_string(_bytesInPerSecond) +
+            " B/s\tOUT: " +
+            std::to_string(_bytesOutPerSecond) +
+            " B/s");
+    }
+
+    return _bytesOutPerSecond + _bytesInPerSecond;
+}
+
 bool Server::setNonBlocking(bool enabled) {
     if (!_socket.isValid())
         return false;
@@ -189,6 +223,8 @@ int Server::udpSend(const Address& dest, std::vector<uint8_t> data) {
         "\t" +
         dataToString(fullPacket));
 
+    _bytesOut += fullPacket.size();
+
     int sent = _socket.sendTo(fullPacket.data(), fullPacket.size(), dest);
 
     if (sent < 0) {
@@ -231,6 +267,8 @@ int Server::tcpSend(int dest, std::vector<uint8_t> data) {
         std::to_string(dest) +
         "\t" +
         dataToString(fullPacket));
+
+    _bytesOut += fullPacket.size();
 
     size_t totalSent = 0;
     while (totalSent < fullPacket.size()) {
@@ -291,6 +329,7 @@ std::vector<Address> Server::udpReceive(int timeout, int maxInputs) {
             std::to_string(sender.getPort()) +
             "\t" +
             dataToString(buffer));
+        _bytesIn += received;
 
         uint64_t currentTime = static_cast<uint64_t>(std::time(nullptr));
 
@@ -386,6 +425,7 @@ std::vector<int> Server::tcpReceive(int timeout) {
             std::to_string(client_fd) +
             "\t" +
             dataToString(buffer));
+        _bytesIn += received;
 
         if (received == 0) {
             CLOSE_SOCKET(client_fd);

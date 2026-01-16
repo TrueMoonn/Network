@@ -4,6 +4,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <chrono>
 
 #include "Network/NetworkPlatform.hpp"
 #include "Network/Address.hpp"
@@ -56,6 +57,15 @@ class Server {
      * Close all sockets connected to and clear vectors.
      */
     void stop();
+
+    /**
+     * @brief Evaluate bandwidth usage
+     *
+     * @return std::size_t : An average of bytes per second sent and received
+     * since the last call
+     * The more often you call it, the more precise it is
+     */
+    std::size_t evalBandwidthUsage();
 
     /**
      * @brief Set the Server non-blocking
@@ -235,6 +245,14 @@ class Server {
     uint16_t _port;
     NetworkSocket _socket;
     bool _running;
+    std::size_t _bytesOut = 0;
+    std::size_t _bytesIn = 0;
+
+    std::size_t _bytesOutPerSecond = 0;
+    std::size_t _bytesInPerSecond = 0;
+
+    std::chrono::_V2::system_clock::time_point _lastBandWidthCheck =
+        std::chrono::system_clock::now();
 
     ProtocolManager _protocol;
     Logger _logger;
