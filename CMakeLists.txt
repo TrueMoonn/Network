@@ -99,7 +99,8 @@ set_target_properties(lz4_static PROPERTIES
 )
 
 target_link_libraries(${PROJECT_NAME}
+    PUBLIC
+        lz4_static
     PRIVATE
         jsoncpp_lib
-        lz4_static
 )
