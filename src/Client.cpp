@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <functional>
+#include <unordered_map>
 
 #include "Network/Client.hpp"
 #include "Network/NetworkPlatform.hpp"
@@ -90,7 +91,8 @@ void Client::disconnect() {
     _logger.write("Client disconnected");
 }
 
-bool Client::initPacketTrackers(std::unordered_map<uint8_t, uint32_t> packetToTrace,
+bool Client::initPacketTrackers(
+    std::unordered_map<uint8_t, uint32_t> packetToTrace,
     std::function<void(uint8_t)> callback) {
     for (auto& packet : packetToTrace) {
         PacketTracking newEntry = {
