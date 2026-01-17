@@ -2,6 +2,9 @@
 
 #include <string>
 #include <vector>
+#include <chrono>
+#include <unordered_map>
+#include <functional>
 
 #include "Network/Address.hpp"
 #include "Network/NetworkSocket.hpp"
@@ -12,6 +15,16 @@
 #define CAST_UINT32 static_cast<uint32_t>
 
 namespace net {
+
+/**
+ * @brief Packet tracker structure
+ *
+ * Used by Client to ask server for missing packets
+ */
+struct PacketTracking {
+    std::size_t expectedTime;
+    std::chrono::steady_clock::time_point lastRecvTime;
+};
 
 /**
  * @brief Communicate in UDP or TCP with a Server
@@ -156,12 +169,39 @@ class Client {
      */
     const Address& getServerAddress() const { return _server_address; }
 
+    /**
+     * @brief Initialize packet trackers
+     *
+     * @return bool true if succeed, false if failed
+     */
+    bool initPacketTrackers(std::unordered_map<uint8_t, uint32_t>packetToTrace,
+        std::function<void(uint8_t)> callback);
+
+    /**
+     * @brief Set a packet code as received
+     *
+     * @param code the packet code
+     * @return bool true if succeed, false if failed
+     */
+    bool markPacketCode(uint8_t code);
+
+    /**
+     * @brief Check packet trackers automatically
+     *
+     * @return bool true if succeed, false if failed
+     */
+
+    bool checkPacketTrackers();
+
  private:
     NetworkSocket _socket;
     Address _server_address;
     bool _connected;
     ProtocolManager _protocol;
     Logger _logger;
+
+    std::unordered_map<uint8_t, PacketTracking> _packetTrackers;
+    std::function<void(uint8_t)> _trackPacketCallback;
 
     std::vector<uint8_t> _input_buffer;
 };

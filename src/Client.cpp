@@ -3,6 +3,10 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <chrono>
+#include <functional>
+#include <unordered_map>
+
 #include "Network/Client.hpp"
 #include "Network/NetworkPlatform.hpp"
 
@@ -85,6 +89,49 @@ void Client::disconnect() {
     _connected = false;
     std::cout << "Client disconnected" << std::endl;
     _logger.write("Client disconnected");
+}
+
+bool Client::initPacketTrackers(
+    std::unordered_map<uint8_t, uint32_t> packetToTrace,
+    std::function<void(uint8_t)> callback) {
+    for (auto& packet : packetToTrace) {
+        PacketTracking newEntry = {
+            .expectedTime = packet.second,
+            .lastRecvTime = std::chrono::steady_clock::now(),
+        };
+        _packetTrackers.insert({packet.first, newEntry});
+    }
+    _trackPacketCallback = callback;
+    std::cout << "Packet trackers set for "
+              << _packetTrackers.size()
+              << " packets"
+              << std::endl;
+    return true;
+}
+
+bool Client::checkPacketTrackers() {
+    auto now = std::chrono::steady_clock::now();
+    for (auto& code : _packetTrackers) {
+        auto elapsed =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                now - code.second.lastRecvTime)
+                .count();
+        if (elapsed > code.second.expectedTime * 2) {
+            _trackPacketCallback(code.first);
+            code.second.lastRecvTime = now;
+        }
+    }
+    return true;
+}
+
+bool Client::markPacketCode(uint8_t code) {
+    auto it = _packetTrackers.find(code);
+    if (it == _packetTrackers.end()) {
+        return false;
+    }
+
+    it->second.lastRecvTime = std::chrono::steady_clock::now();
+    return true;
 }
 
 std::string dataToString(std::vector<uint8_t> buff) {
@@ -234,6 +281,9 @@ int Client::receive(void* buffer, size_t max_size) {
         ProtocolManager::UnformattedPacket unformatted =
             _protocol.unformatPacket(tempBuffer);
         size_t dataToCopy = std::min(unformatted.data.size(), max_size);
+
+        markPacketCode(unformatted.data[0]);
+
         std::memcpy(buffer, unformatted.data.data(), dataToCopy);
         if (unformatted.data.size() > max_size) {
             std::cerr << "Warning: Received data truncated ("
@@ -473,6 +523,7 @@ std::vector<std::vector<uint8_t>> Client::extractPacketsFromBuffer() {
                 _input_buffer.begin() + offset,
                 _input_buffer.begin() + offset + actualDataLength);
 
+            markPacketCode(packetData[0]);
             result.push_back(packetData);
             offset += actualDataLength;
 
