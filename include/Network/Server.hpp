@@ -251,7 +251,7 @@ class Server {
     std::size_t _bytesOutPerSecond = 0;
     std::size_t _bytesInPerSecond = 0;
 
-    std::chrono::_V2::system_clock::time_point _lastBandWidthCheck =
+    std::chrono::system_clock::time_point _lastBandWidthCheck =
         std::chrono::system_clock::now();
 
     ProtocolManager _protocol;
